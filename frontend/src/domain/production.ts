@@ -1,4 +1,7 @@
-import type { ProductionPlan } from './types'
+import { oee } from './kpi'
+import type { ProductionPlan, SimEvent, SimState } from './types'
+
+const HOUR = 3600
 
 /**
  * 생산 계획 관련 계산. KPI와 마찬가지로 상태에 저장하지 않고 매번 계산한다.
@@ -29,4 +32,88 @@ export function splitIntoLots(lines: ProductionPlan['lines'], lotSize: number): 
     issued[pick] += qty
     lots.push({ itemId: lines[pick].itemId, qty })
   }
+}
+
+/** 계획 총 목표 수량 */
+export function planTotal(plan: ProductionPlan): number {
+  return plan.lines.reduce((sum, line) => sum + line.targetQty, 0)
+}
+
+/** 계획상 시간당 생산량. 실제 UPH와 비교하는 기준값이다. */
+export function plannedUph(plan: ProductionPlan): number {
+  return (planTotal(plan) / plan.duration) * HOUR
+}
+
+/**
+ * time까지 만들었어야 할 누적 수량. 계획 기간 동안 일정한 속도로 만든다고 본다.
+ * 계획 시작 전이면 0, 계획이 끝난 뒤면 목표 전체.
+ */
+export function plannedQtyAt(plan: ProductionPlan, time: number): number {
+  const elapsed = Math.min(Math.max(time - plan.startTime, 0), plan.duration)
+  return (planTotal(plan) * elapsed) / plan.duration
+}
+
+/** 달성률 = 실적(양품 완료 수) ÷ 지금까지 계획 수량. 계획이 없거나 아직 계획 수량이 0이면 null. */
+export function planAttainment(state: SimState): number | null {
+  if (!state.plan) return null
+  const planned = plannedQtyAt(state.plan, state.time)
+  return planned === 0 ? null : state.counters.completed / planned
+}
+
+export interface HourlyBucket {
+  /** 0부터 시작하는 시간대 번호(0 = 첫 1시간) */
+  hour: number
+  /** 이 시간대에 완료된 양품 수. 아직 오지 않은 시간대면 null */
+  good: number | null
+  /** 이 시간대 끝(진행 중이면 지금)까지의 누적 양품 수. 아직 오지 않은 시간대면 null */
+  cumulativeGood: number | null
+  /** 이 시간대 끝까지의 누적 계획 수량. 계획이 없으면 null */
+  cumulativePlan: number | null
+}
+
+/**
+ * 시간대별(1시간 단위) 생산 실적과 누적 계획. 생산 추이 차트의 데이터다.
+ * 계획 기간 전체를 보여줘 앞으로 남은 계획선도 보이게 하고, 계획이 끝난 뒤에도 시간이 흐르면 그만큼 늘린다.
+ */
+export function hourlyOutput(state: SimState): HourlyBucket[] {
+  const plan = state.plan
+  const planEnd = plan ? plan.startTime + plan.duration : 0
+  const elapsedHours = Math.ceil(state.time / HOUR)
+  const count = Math.max(Math.ceil(planEnd / HOUR), elapsedHours, 1)
+
+  const good = new Array<number>(count).fill(0)
+  for (const unit of Object.values(state.units)) {
+    if (unit.status !== 'COMPLETED') continue
+    good[Math.min(Math.floor((unit.finishedAt! - 1) / HOUR), count - 1)]++
+  }
+
+  let cumulative = 0
+  return good.map((qty, hour) => {
+    const started = hour < elapsedHours
+    cumulative += qty
+    return {
+      hour,
+      good: started ? qty : null,
+      cumulativeGood: started ? cumulative : null,
+      cumulativePlan: plan ? plannedQtyAt(plan, (hour + 1) * HOUR) : null,
+    }
+  })
+}
+
+/**
+ * 라인 OEE: 설비별 OEE의 단순 평균. 아직 시간이 흐르지 않았으면 null.
+ * 라인 전체 산출량은 병목 설비가 정하므로, 병목 설비의 OEE를 따로 보는 것이 더 정확할 때도 있다.
+ */
+export function lineOee(state: SimState): number | null {
+  if (state.time === 0 || state.equipment.length === 0) return null
+  return state.equipment.reduce((sum, eq) => sum + oee(eq).oee, 0) / state.equipment.length
+}
+
+/** 최근 알람: 경고·위험 이벤트를 최신순으로 limit건 */
+export function recentAlarms(state: SimState, limit = 10): SimEvent[] {
+  const alarms: SimEvent[] = []
+  for (let i = state.events.length - 1; i >= 0 && alarms.length < limit; i--) {
+    if (state.events[i].severity !== 'info') alarms.push(state.events[i])
+  }
+  return alarms
 }

@@ -19,7 +19,7 @@ onMounted(() => firstCard.value?.[0]?.focus())
       aria-labelledby="landing-title"
     >
       <p class="dialog__eyebrow">
-        생산관리자 체험
+        교육 모드 · 생산관리자 체험
       </p>
       <h1 id="landing-title">
         MES 3D 공정 시뮬레이터
@@ -46,6 +46,12 @@ onMounted(() => firstCard.value?.[0]?.focus())
           </button>
         </li>
       </ul>
+      <RouterLink
+        to="/"
+        class="btn landing-back"
+      >
+        ← 대시보드로 돌아가기
+      </RouterLink>
     </section>
   </div>
 </template>

@@ -18,9 +18,12 @@
   "dependencies": {
     "@tresjs/cientos": "^5.9.3",
     "@tresjs/core": "^5.9.3",
+    "echarts": "^6.1.0",
     "pinia": "^4.0.3",
     "three": "^0.186.1",
-    "vue": "^3.5.44"
+    "vue": "^3.5.44",
+    "vue-echarts": "^8.3.2",
+    "vue-router": "^5.4.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

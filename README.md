@@ -68,6 +68,9 @@ npm run build      # 타입체크 + 프로덕션 빌드
 | `frontend/src/stores/scenario.ts` | Pinia 스토어: 화면 단계(랜딩 → 브리핑 → 진행 → 결과)와 결과표 |
 | `frontend/src/stores/selection.ts` | Pinia 스토어: 선택된 객체(설비·작업장·Unit·작업지시·자재) |
 | `frontend/src/stores/view.ts` | Pinia 스토어: 화면 표시 옵션(히트맵) |
+| `frontend/src/router.ts` | 페이지 라우팅: MES 기능 단위 페이지와 교육 모드(전체 화면) |
+| `frontend/src/layout/DashboardLayout.vue` | 관리자 모드 레이아웃: 사이드바 메뉴, 헤더의 시뮬 시각·재생·배속 |
+| `frontend/src/views/` | 페이지 화면. `TrainingView`는 기존 3D 시나리오 체험(교육 모드) |
 | `frontend/src/scene/` | 3D 장면 (TresJS): 라인 배치, 설비, 버퍼 선반, 이동하는 Unit, 자재 랙 |
 | `frontend/src/ui/` | 화면 위 오버레이: KPI 바, 작업지시 패널, 상세 패널, 이벤트 로그, 시뮬 컨트롤, 범례 |
 | `frontend/src/ui/scenario/` | 랜딩(시나리오 선택), 브리핑, 좌상단 시나리오 바, 결과표 |

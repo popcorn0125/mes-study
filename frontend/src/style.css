@@ -838,3 +838,129 @@ select:focus-visible {
   color: #8b949e;
   pointer-events: none;
 }
+
+/* ── 대시보드 레이아웃 (관리자 모드) ───────── */
+.dash {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 56px 1fr;
+  grid-template-areas:
+    'sidebar header'
+    'sidebar main';
+  height: 100%;
+}
+.dash-sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 12px;
+  background: #0d1117;
+  border-right: 1px solid var(--panel-border);
+}
+.dash-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+}
+.dash-brand strong {
+  font-size: 16px;
+}
+.dash-brand span {
+  font-size: 12px;
+  color: #8b949e;
+}
+.dash-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.dash-nav__link {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 6px;
+  color: #c9d1d9;
+  text-decoration: none;
+  font-size: 14px;
+}
+.dash-nav__link:hover {
+  background: #161b22;
+}
+.dash-nav__link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.dash-nav__link--active {
+  background: #1f6feb33;
+  color: #e6edf3;
+  font-weight: 600;
+}
+.dash-nav__link--training {
+  border-top: 1px solid var(--panel-border);
+  border-radius: 0;
+  padding-top: 14px;
+}
+.dash-header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.dash-header h1 {
+  margin: 0;
+  font-size: 18px;
+}
+.dash-header__sim {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dash-header__virtual {
+  color: #d29922;
+  border-color: #9e6a03;
+}
+.dash-main {
+  grid-area: main;
+  overflow: auto;
+  padding: 24px;
+}
+
+/* ── 대시보드 공통 카드 ─────────────────────── */
+.card {
+  background: #0d1117;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+.placeholder {
+  max-width: 560px;
+}
+.placeholder h2 {
+  font-size: 15px;
+  margin: 20px 0 8px;
+}
+.placeholder__eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #58a6ff;
+}
+.placeholder__concepts {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.8;
+}
+a.btn {
+  text-decoration: none;
+  display: inline-block;
+}
+.landing-back {
+  margin-top: 16px;
+}

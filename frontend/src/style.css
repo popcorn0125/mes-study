@@ -964,3 +964,55 @@ a.btn {
 .landing-back {
   margin-top: 16px;
 }
+
+/* ── 생산 현황 ─────────────────────────────── */
+.production {
+  display: grid;
+  gap: 16px;
+}
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.kpi-card {
+  --tone: #8b949e;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-top: 3px solid var(--tone);
+}
+.kpi-card--good { --tone: #3fb950; }
+.kpi-card--warn { --tone: #d29922; }
+.kpi-card--bad { --tone: #f85149; }
+.kpi-card__label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #8b949e;
+}
+.kpi-card__tone {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tone);
+}
+.kpi-card__value {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.kpi-card__value small {
+  margin-left: 4px;
+  font-size: 13px;
+  font-weight: 400;
+  color: #8b949e;
+}
+.kpi-card__sub {
+  margin: 0;
+  font-size: 12px;
+  color: #8b949e;
+}

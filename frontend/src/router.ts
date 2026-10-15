@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import PlaceholderView from './views/PlaceholderView.vue'
+import ProductionView from './views/ProductionView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -20,12 +21,8 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'production',
-    component: PlaceholderView,
+    component: ProductionView,
     meta: { title: '생산 현황', icon: '📊' },
-    props: {
-      mesFunction: '생산 모니터링',
-      concepts: ['계획 대비 실적', 'UPH', 'WIP', '리드타임', 'Little의 법칙'],
-    },
   },
   {
     path: '/work-orders',

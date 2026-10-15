@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef, watch } from 'vue'
+import { computed, provide, shallowRef, watch } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
 import { workCenterUtilization } from '@/domain/kpi'
@@ -9,6 +9,7 @@ import { useSimStore } from '@/stores/sim'
 import { useViewStore } from '@/stores/view'
 import { createNameLookup } from '@/ui/format'
 import BufferShelf from './BufferShelf.vue'
+import { SCENE_EMBEDDED } from './embedded'
 import { heatColor } from './colors'
 import MaterialRack from './MaterialRack.vue'
 import EquipmentMesh from './EquipmentMesh.vue'
@@ -31,6 +32,13 @@ import ScrapBin from './props/ScrapBin.vue'
 import ShippingDock from './props/ShippingDock.vue'
 import SceneLabel from './SceneLabel.vue'
 
+/**
+ * embedded: 대시보드 위젯 안에 넣을 때. 창 전체가 아니라 부모 크기에 맞춰 그리고,
+ * 라인 전체가 보이는 정면 시점을 쓰며, 자동 회전과 3D 라벨을 끈다.
+ */
+const props = defineProps<{ embedded?: boolean }>()
+provide(SCENE_EMBEDDED, props.embedded)
+
 const sim = useSimStore()
 const selection = useSelectionStore()
 const view = useViewStore()
@@ -40,8 +48,9 @@ const ZONE_COLOR = '#1b232d'
 
 // ── 카메라 ────────────────────────────────────────────────
 // 왼쪽 패널(작업지시·이벤트 로그)을 피해 라인이 화면 오른쪽 영역에 오도록 시점 중심을 왼쪽으로 옮긴다.
-const CAMERA_TARGET: [number, number, number] = [-6, 0, 0]
-const CAMERA_POSITION: [number, number, number] = [-6, 18, 26]
+// 위젯(embedded)은 가리는 패널이 없으므로 라인 가운데를 본다.
+const CAMERA_TARGET: [number, number, number] = props.embedded ? [0, 0, 0] : [-6, 0, 0]
+const CAMERA_POSITION: [number, number, number] = props.embedded ? [0, 15, 21] : [-6, 18, 26]
 /** 이동(팬)으로 시점 중심이 공장 밖으로 나가지 않게 하는 범위 */
 const TARGET_BOUNDS = { minX: -22, maxX: 18, minZ: -8, maxZ: 8 }
 
@@ -151,7 +160,7 @@ const agvStops = computed(() => {
 <template>
   <TresCanvas
     clear-color="#0b0f14"
-    window-size
+    :window-size="!embedded"
     @pointermissed="selection.clear()"
   >
     <TresPerspectiveCamera
@@ -164,7 +173,7 @@ const agvStops = computed(() => {
       ref="controls"
       make-default
       :target="CAMERA_TARGET"
-      :auto-rotate="scenario.phase === 'landing'"
+      :auto-rotate="!embedded && scenario.phase === 'landing'"
       :auto-rotate-speed="0.6"
       enable-damping
       :damping-factor="0.12"

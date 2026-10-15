@@ -27,6 +27,20 @@ describe('시나리오 정의', () => {
     expect(freeScenario.duration).toBeNull()
     expect(freeScenario.metrics).toHaveLength(0)
   })
+
+  it('자유 체험은 생산 계획을 세우고, 계획 수량만큼 작업지시를 나눠 하달한다', () => {
+    const { state } = createScenarioEngine(freeScenario)
+    expect(state.plan?.lines).toEqual([
+      { itemId: 'MOTOR-A', targetQty: 360 },
+      { itemId: 'MOTOR-B', targetQty: 120 },
+    ])
+    expect(state.workOrders).toHaveLength(12)
+    expect(state.workOrders.every((wo) => wo.status === 'RELEASED')).toBe(true)
+    const totalOf = (itemId: string) =>
+      state.workOrders.filter((wo) => wo.itemId === itemId).reduce((sum, wo) => sum + wo.qty, 0)
+    expect(totalOf('MOTOR-A')).toBe(360)
+    expect(totalOf('MOTOR-B')).toBe(120)
+  })
 })
 
 describe('모범 조치는 조치 없음보다 낫다', () => {

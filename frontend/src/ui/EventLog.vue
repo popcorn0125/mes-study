@@ -31,6 +31,8 @@ function targetOf(event: SimEvent): Selection | null {
       return { kind: 'material', id: event.refId }
     case 'CYCLE_TIME_CHANGED':
       return { kind: 'workCenter', id: event.refId }
+    case 'PLAN_SET':
+      return null
     case 'WORK_ORDER_CREATED':
     case 'WORK_ORDER_RELEASED':
     case 'WORK_ORDER_HELD':

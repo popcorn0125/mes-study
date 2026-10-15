@@ -250,6 +250,7 @@ export interface ProductionRecord {
 }
 
 export type SimEventType =
+  | 'PLAN_SET'
   | 'WORK_ORDER_CREATED'
   | 'WORK_ORDER_RELEASED'
   | 'WORK_ORDER_HELD'
@@ -278,6 +279,20 @@ export interface SimEvent {
   message: string
 }
 
+/**
+ * 생산 계획: 한 교대 동안 품목별로 몇 대를 만들지 정한 목표.
+ * 실제 MES에서는 ERP·APS에서 받아오는 값이다. 엔진은 기준값으로 보관만 하고, 실제 생산은 작업지시가 움직인다.
+ */
+export interface ProductionPlan {
+  id: string
+  /** 계획 시작 시각(시뮬 초) */
+  startTime: number
+  /** 계획 기간(초) */
+  duration: number
+  /** 품목별 목표 수량 */
+  lines: { itemId: string; targetQty: number }[]
+}
+
 export interface SimState {
   time: number
   workOrders: WorkOrder[]
@@ -302,4 +317,6 @@ export interface SimState {
     /** 긴급 발주 할증 누계(원) */
     expediteSurcharge: number
   }
+  /** 현재 생산 계획. 계획 없이 작업지시만으로도 돌 수 있다 */
+  plan: ProductionPlan | null
 }

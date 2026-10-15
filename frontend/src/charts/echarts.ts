@@ -1,0 +1,20 @@
+import { BarChart, LineChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+
+/**
+ * ECharts는 전체를 불러오면 크기가 커서, 쓰는 차트·컴포넌트만 등록한다.
+ * 새 차트 종류(파이, 히트맵 등)를 쓰면 여기에 추가한다.
+ */
+use([BarChart, LineChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer])
+
+/** 대시보드 어두운 배경에 맞춘 공통 색 */
+export const CHART_COLORS = {
+  text: '#8b949e',
+  grid: '#21262d',
+  primary: '#2f81f7',
+  good: '#3fb950',
+  plan: '#c9d1d9',
+  warn: '#d29922',
+}

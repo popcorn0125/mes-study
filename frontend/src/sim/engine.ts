@@ -6,6 +6,7 @@ import type {
   MasterData,
   Material,
   Operation,
+  ProductionPlan,
   Routing,
   SimEvent,
   SimState,
@@ -63,6 +64,7 @@ export class SimEngine {
   private nextWorkOrderSeq = 1
   private nextUnitSeq = 1
   private nextPurchaseOrderSeq = 1
+  private nextPlanSeq = 1
 
   constructor(master: MasterData, options: SimOptions) {
     this.master = master
@@ -100,12 +102,23 @@ export class SimEngine {
       events: [],
       counters: { released: 0, completed: 0, scrapped: 0, wipSeconds: 0 },
       costs: { expediteSurcharge: 0 },
+      plan: null,
     }
   }
 
   /** 명령을 큐에 넣는다. 존재하지 않는 대상을 가리키면 즉시 예외를 던진다. */
   dispatch(command: SimCommand): void {
     switch (command.type) {
+      case 'SET_PRODUCTION_PLAN': {
+        const { plan } = command
+        if (!(plan.duration > 0)) throw new Error('계획 기간은 0보다 커야 합니다')
+        if (plan.lines.length === 0) throw new Error('계획에 품목이 없습니다')
+        for (const line of plan.lines) {
+          if (!this.routings.has(line.itemId)) throw new Error(`라우팅이 없는 품목: ${line.itemId}`)
+          if (!(line.targetQty > 0)) throw new Error('계획 수량은 0보다 커야 합니다')
+        }
+        break
+      }
       case 'CREATE_WORK_ORDER':
         if (!this.routings.has(command.itemId)) throw new Error(`라우팅이 없는 품목: ${command.itemId}`)
         if (!(command.qty > 0)) throw new Error('작업지시 수량은 0보다 커야 합니다')
@@ -165,6 +178,18 @@ export class SimEngine {
     this.queue = []
     for (const command of commands) {
       switch (command.type) {
+        case 'SET_PRODUCTION_PLAN': {
+          const plan: ProductionPlan = {
+            ...command.plan,
+            lines: command.plan.lines.map((line) => ({ ...line })),
+            id: formatPlanId(this.nextPlanSeq++),
+          }
+          this.state.plan = plan
+          const total = plan.lines.reduce((sum, line) => sum + line.targetQty, 0)
+          const detail = plan.lines.map((line) => `${line.itemId} ${line.targetQty}`).join(' · ')
+          this.emit('PLAN_SET', plan.id, 'info', `생산 계획 ${plan.id} 설정: ${total}대 (${detail})`)
+          break
+        }
         case 'CREATE_WORK_ORDER': {
           const wo: WorkOrder = {
             id: formatWorkOrderId(this.nextWorkOrderSeq++),
@@ -697,6 +722,10 @@ function createEquipmentRuntime(spec: Equipment): EquipmentRuntime {
     maintenanceRequested: false,
     failureCount: 0,
   }
+}
+
+function formatPlanId(seq: number): string {
+  return `PLAN-${String(seq).padStart(3, '0')}`
 }
 
 export function formatWorkOrderId(seq: number): string {

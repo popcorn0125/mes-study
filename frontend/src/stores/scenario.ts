@@ -57,6 +57,29 @@ export const useScenarioStore = defineStore('scenario', () => {
     phase.value = 'running'
   }
 
+  /** 교육 모드에 들어올 때: 대시보드 공장을 멈추고 시나리오 선택부터 시작한다 */
+  function enterTraining() {
+    sim.pause()
+    selection.clear()
+    phase.value = 'landing'
+  }
+
+  /**
+   * 대시보드로 돌아올 때: 교육 모드에서 다른 시나리오를 골랐다면 자유 체험 공장을 처음부터 다시 돌린다.
+   * 대시보드는 항상 자유 체험 공장(기본 공장)을 본다.
+   */
+  function enterDashboard() {
+    if (current.value !== freeScenario) {
+      sim.load(freeScenario)
+      current.value = freeScenario
+      result.value = null
+      started.value = false
+    }
+    selection.clear()
+    phase.value = 'landing'
+    sim.play()
+  }
+
   // 제한 시간에 도달하면 결과표를 만든다("조치 없음"·"모범 조치"는 같은 seed로 다시 실행해 비교).
   watch(
     () => sim.reachedLimit,
@@ -67,5 +90,18 @@ export const useScenarioStore = defineStore('scenario', () => {
     },
   )
 
-  return { current, phase, started, result, choose, start, restart, openBriefing, openLanding, closeResult }
+  return {
+    current,
+    phase,
+    started,
+    result,
+    choose,
+    start,
+    restart,
+    openBriefing,
+    openLanding,
+    closeResult,
+    enterTraining,
+    enterDashboard,
+  }
 })

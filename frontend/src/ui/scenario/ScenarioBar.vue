@@ -56,6 +56,12 @@ const progress = computed(() => {
         >
           시나리오 선택
         </button>
+        <RouterLink
+          to="/"
+          class="btn btn--small"
+        >
+          대시보드
+        </RouterLink>
       </div>
     </div>
   </header>

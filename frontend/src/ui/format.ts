@@ -78,6 +78,8 @@ export function metricValue(key: MetricKey, metrics: ScenarioMetrics): number {
 /** 사용자 조치 기록 표시용 문장 */
 export function describeCommand(command: SimCommand, names: ReturnType<typeof createNameLookup>): string {
   switch (command.type) {
+    case 'SET_PRODUCTION_PLAN':
+      return `생산 계획 설정: ${command.plan.lines.map((l) => `${names.item(l.itemId)} ${l.targetQty}대`).join(', ')}`
     case 'CREATE_WORK_ORDER':
       return `작업지시 생성${command.release ? '·하달' : ''}: ${names.item(command.itemId)} ${command.qty}대`
     case 'RELEASE_WORK_ORDER':

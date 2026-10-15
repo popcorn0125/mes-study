@@ -253,3 +253,50 @@ describe('명령 검증', () => {
     expect(() => new SimEngine(master, { seed: 1 })).toThrow()
   })
 })
+
+describe('생산 계획', () => {
+  const PLAN = { startTime: 0, duration: 8 * HOUR, lines: [{ itemId: 'MOTOR-A', targetQty: 360 }, { itemId: 'MOTOR-B', targetQty: 120 }] }
+
+  it('계획을 저장하고 이벤트를 남기며, 다시 설정하면 교체한다', () => {
+    const engine = new SimEngine(createBaselineMaster(), { seed: 1 })
+    expect(engine.state.plan).toBeNull()
+
+    engine.dispatch({ type: 'SET_PRODUCTION_PLAN', plan: PLAN })
+    engine.applyPendingCommands()
+    expect(engine.state.plan).toEqual({ id: 'PLAN-001', ...PLAN })
+    expect(engine.state.events.at(-1)).toMatchObject({ type: 'PLAN_SET', refId: 'PLAN-001', severity: 'info' })
+
+    engine.dispatch({ type: 'SET_PRODUCTION_PLAN', plan: { ...PLAN, lines: [{ itemId: 'MOTOR-A', targetQty: 100 }] } })
+    engine.applyPendingCommands()
+    expect(engine.state.plan?.id).toBe('PLAN-002')
+    expect(engine.state.plan?.lines).toEqual([{ itemId: 'MOTOR-A', targetQty: 100 }])
+  })
+
+  it('명령 객체를 나중에 고쳐도 저장된 계획은 바뀌지 않는다', () => {
+    const engine = new SimEngine(createBaselineMaster(), { seed: 1 })
+    const plan = structuredClone(PLAN)
+    engine.dispatch({ type: 'SET_PRODUCTION_PLAN', plan })
+    engine.applyPendingCommands()
+    plan.lines[0].targetQty = 1
+    expect(engine.state.plan?.lines[0].targetQty).toBe(360)
+  })
+
+  it('계획은 기준값일 뿐 생산 동작을 바꾸지 않는다', () => {
+    const withoutPlan = startEngine(createBaselineMaster(), 50, 7)
+    const withPlan = startEngine(createBaselineMaster(), 50, 7)
+    withPlan.dispatch({ type: 'SET_PRODUCTION_PLAN', plan: PLAN })
+    withoutPlan.run(2 * HOUR)
+    withPlan.run(2 * HOUR)
+    expect(withPlan.state.records).toEqual(withoutPlan.state.records)
+    expect(withPlan.state.counters).toEqual(withoutPlan.state.counters)
+  })
+
+  it('잘못된 계획은 dispatch 시점에 거부한다', () => {
+    const engine = new SimEngine(createBaselineMaster(), { seed: 1 })
+    const dispatchPlan = (plan: typeof PLAN) => () => engine.dispatch({ type: 'SET_PRODUCTION_PLAN', plan })
+    expect(dispatchPlan({ ...PLAN, duration: 0 })).toThrow()
+    expect(dispatchPlan({ ...PLAN, lines: [] })).toThrow()
+    expect(dispatchPlan({ ...PLAN, lines: [{ itemId: 'NOPE', targetQty: 10 }] })).toThrow()
+    expect(dispatchPlan({ ...PLAN, lines: [{ itemId: 'MOTOR-A', targetQty: 0 }] })).toThrow()
+  })
+})

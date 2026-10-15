@@ -61,7 +61,7 @@ npm run build      # 타입체크 + 프로덕션 빌드
 | `frontend/src/sim/rng.ts` | seed 기반 난수 생성기 — 같은 seed와 같은 명령이면 항상 같은 결과 |
 | `frontend/src/sim/clock.ts` | 실제 경과 시간 × 배속 → 이번 프레임에 돌릴 tick 수 계산 |
 | `frontend/src/scenarios/baseline.ts` | 기본 공장: BLDC 모터 조립 라인 기준정보 |
-| `frontend/src/scenarios/demo.ts` | 자유 체험 시작 작업지시(A/B 5건) |
+| `frontend/src/scenarios/demo.ts` | 자유 체험 생산 계획(8시간, A 360대 · B 120대)과 로트 크기 |
 | `frontend/src/scenarios/lineBalancing.ts` · `breakdown.ts` · `materialShortage.ts` | 시나리오 S1~S3 정의: 기준정보 조정, 초기 작업지시, 브리핑, 모범 조치, 결과 해설 규칙 |
 | `frontend/src/scenarios/runner.ts` | 시나리오 엔진 생성, 시각별 명령을 적용하며 화면 없이 실행, 결과 지표·결과표 생성 |
 | `frontend/src/stores/sim.ts` | Pinia 스토어: 엔진 실행 루프, 재생·정지·배속, 시나리오 불러오기·제한 시간, 명령 전달과 조치 기록 |

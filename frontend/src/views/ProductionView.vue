@@ -3,7 +3,11 @@ import { computed } from 'vue'
 import { averageLeadTime, averageWip, throughputPerHour, wip, yieldRate } from '@/domain/kpi'
 import { lineOee, planAttainment, planTotal, plannedQtyAt, plannedUph } from '@/domain/production'
 import { useSimStore } from '@/stores/sim'
+import { PRODUCTION_CONCEPTS } from '@/concepts/production'
+import AlarmList from '@/dashboard/AlarmList.vue'
+import ConceptPanel from '@/dashboard/ConceptPanel.vue'
 import KpiCard, { type KpiTone } from '@/dashboard/KpiCard.vue'
+import ProductionTrendChart from '@/dashboard/ProductionTrendChart.vue'
 import { formatDuration, percent } from '@/ui/format'
 
 /** 생산 현황: 계획대로 만들고 있나 / 라인이 잘 도나 / 지금 문제가 있나 */
@@ -115,5 +119,12 @@ const kpi = computed(() => {
         hint="완료된 양품이 투입부터 완료까지 걸린 평균 시간"
       />
     </section>
+    <div class="dash-row">
+      <ProductionTrendChart />
+    </div>
+    <div class="dash-row">
+      <AlarmList />
+      <ConceptPanel :concepts="PRODUCTION_CONCEPTS" />
+    </div>
   </div>
 </template>

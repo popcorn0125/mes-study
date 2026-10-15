@@ -67,7 +67,7 @@ export interface HourlyBucket {
   good: number | null
   /** 이 시간대 끝(진행 중이면 지금)까지의 누적 양품 수. 아직 오지 않은 시간대면 null */
   cumulativeGood: number | null
-  /** 이 시간대 끝까지의 누적 계획 수량. 계획이 없으면 null */
+  /** 이 시간대 끝(진행 중이면 지금)까지의 누적 계획 수량. 실적과 같은 시점끼리 비교한다. 계획이 없으면 null */
   cumulativePlan: number | null
 }
 
@@ -90,12 +90,13 @@ export function hourlyOutput(state: SimState): HourlyBucket[] {
   let cumulative = 0
   return good.map((qty, hour) => {
     const started = hour < elapsedHours
+    const end = (hour + 1) * HOUR
     cumulative += qty
     return {
       hour,
       good: started ? qty : null,
       cumulativeGood: started ? cumulative : null,
-      cumulativePlan: plan ? plannedQtyAt(plan, (hour + 1) * HOUR) : null,
+      cumulativePlan: plan ? plannedQtyAt(plan, started ? Math.min(end, state.time) : end) : null,
     }
   })
 }
@@ -109,11 +110,15 @@ export function lineOee(state: SimState): number | null {
   return state.equipment.reduce((sum, eq) => sum + oee(eq).oee, 0) / state.equipment.length
 }
 
-/** 최근 알람: 경고·위험 이벤트를 최신순으로 limit건 */
+/**
+ * 최근 알람: 경고·위험 이벤트를 최신순으로 limit건.
+ * 제품 한 개의 불량 폐기는 알람이 아니라 품질 데이터로 보고 뺀다(설비·자재 이상만 알람).
+ */
 export function recentAlarms(state: SimState, limit = 10): SimEvent[] {
   const alarms: SimEvent[] = []
   for (let i = state.events.length - 1; i >= 0 && alarms.length < limit; i--) {
-    if (state.events[i].severity !== 'info') alarms.push(state.events[i])
+    const event = state.events[i]
+    if (event.severity !== 'info' && event.type !== 'UNIT_SCRAPPED') alarms.push(event)
   }
   return alarms
 }

@@ -96,7 +96,8 @@ describe('hourlyOutput', () => {
     expect(buckets.slice(0, 3)).toEqual([
       { hour: 0, good: 2, cumulativeGood: 2, cumulativePlan: 60 },
       { hour: 1, good: 2, cumulativeGood: 4, cumulativePlan: 120 },
-      { hour: 2, good: 0, cumulativeGood: 4, cumulativePlan: 180 },
+      // 진행 중인 시간대는 계획도 지금 시각(2시간 10초) 기준
+      { hour: 2, good: 0, cumulativeGood: 4, cumulativePlan: plannedQtyAt(PLAN, 2 * HOUR + 10) },
     ])
     expect(buckets[3]).toEqual({ hour: 3, good: null, cumulativeGood: null, cumulativePlan: 240 })
     expect(buckets[7].cumulativePlan).toBe(480)
@@ -127,16 +128,22 @@ describe('lineOee', () => {
 })
 
 describe('recentAlarms', () => {
-  it('경고·위험 이벤트만 최신순으로 limit건', () => {
+  it('경고·위험 이벤트만 최신순으로 limit건, 불량 폐기는 뺀다', () => {
     const state = emptyState()
-    const event = (time: number, severity: SimEvent['severity']): SimEvent => ({
-      type: 'SENSOR_WARNING',
+    const event = (time: number, severity: SimEvent['severity'], type: SimEvent['type'] = 'SENSOR_WARNING'): SimEvent => ({
+      type,
       time,
       refId: 'X',
       severity,
       message: '',
     })
-    state.events = [event(1, 'warning'), event(2, 'info'), event(3, 'critical'), event(4, 'warning')]
+    state.events = [
+      event(1, 'warning'),
+      event(2, 'info'),
+      event(3, 'critical'),
+      event(4, 'warning'),
+      event(5, 'warning', 'UNIT_SCRAPPED'),
+    ]
     expect(recentAlarms(state, 2).map((e) => e.time)).toEqual([4, 3])
     expect(recentAlarms(state).map((e) => e.time)).toEqual([4, 3, 1])
   })

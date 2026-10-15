@@ -7,6 +7,7 @@ import { PRODUCTION_CONCEPTS } from '@/concepts/production'
 import AlarmList from '@/dashboard/AlarmList.vue'
 import ConceptPanel from '@/dashboard/ConceptPanel.vue'
 import KpiCard, { type KpiTone } from '@/dashboard/KpiCard.vue'
+import LineStatusWidget from '@/dashboard/LineStatusWidget.vue'
 import ProductionTrendChart from '@/dashboard/ProductionTrendChart.vue'
 import { formatDuration, percent } from '@/ui/format'
 
@@ -121,6 +122,7 @@ const kpi = computed(() => {
     </section>
     <div class="dash-row">
       <ProductionTrendChart />
+      <LineStatusWidget />
     </div>
     <div class="dash-row">
       <AlarmList />

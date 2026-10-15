@@ -1096,3 +1096,43 @@ a.btn {
   line-height: 1.6;
   color: #c9d1d9;
 }
+
+/* ── 라인 현황 (3D 위젯) ──────────────────── */
+.line-widget__scene {
+  position: relative;
+  height: 280px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #0b0f14;
+}
+.line-widget__loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  margin: 0;
+}
+.line-widget__bottleneck {
+  margin: 12px 0 8px;
+  font-size: 13px;
+}
+.line-widget__bottleneck strong {
+  margin-right: 6px;
+  color: #db6d28;
+}
+.line-widget__equipment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+.line-widget__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--status);
+}

@@ -41,12 +41,8 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/quality',
     name: 'quality',
-    component: PlaceholderView,
+    component: () => import('./views/QualityView.vue'),
     meta: { title: '품질 관리', icon: '✅' },
-    props: {
-      mesFunction: '품질 관리 / 추적성',
-      concepts: ['양품률', 'FPY', '파레토 분석', 'LOT 추적성'],
-    },
   },
   {
     path: '/materials',

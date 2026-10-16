@@ -29,6 +29,9 @@ const view = computed(() => {
   }
 
   const end = unit.finishedAt ?? state.time
+  const codes = new Map(sim.master.defectCodes.map((c) => [c.id, c.name]))
+  // 재작업하면 같은 공정이 두 번 기록되므로, 양품으로 마친 공정 수로 진행도를 센다
+  const passed = new Set(unit.history.filter((h) => h.result === 'GOOD').map((h) => h.opSeq)).size
   return {
     workOrderId: unit.workOrderId,
     item: names.item(unit.itemId),
@@ -37,7 +40,7 @@ const view = computed(() => {
     releasedAt: formatSimTime(unit.releasedAt),
     elapsed: formatDuration(end - unit.releasedAt),
     finished: unit.finishedAt !== null,
-    progress: `${Math.min(unit.history.length, operations.length)} / ${operations.length}`,
+    progress: `${passed} / ${operations.length}`,
     history: unit.history.map((h) => ({
       key: `${h.opSeq}-${h.start}`,
       op: `${h.opSeq} ${names.workCenter(operations.find((o) => o.seq === h.opSeq)?.workCenterId ?? '')}`,
@@ -45,6 +48,8 @@ const view = computed(() => {
       start: formatSimTime(h.start),
       duration: formatDuration(h.end - h.start),
       ok: h.result === 'GOOD',
+      result: h.result === 'GOOD' ? '양품' : (codes.get(h.defectCode ?? '') ?? '불량'),
+      rework: h.rework,
     })),
   }
 })
@@ -109,12 +114,12 @@ const view = computed(() => {
             v-for="h in view.history"
             :key="h.key"
           >
-            <td>{{ h.op }}</td>
+            <td>{{ h.op }}<span v-if="h.rework"> (재작업)</span></td>
             <td>{{ h.equipment }}</td>
             <td>{{ h.start }}</td>
             <td>{{ h.duration }}</td>
             <td :class="h.ok ? 'text-ok' : 'text-ng'">
-              {{ h.ok ? '양품' : '불량' }}
+              {{ h.result }}
             </td>
           </tr>
         </tbody>

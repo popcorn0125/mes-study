@@ -60,6 +60,7 @@
 ## 단계별 계획서
 
 - [1단계: 생산 현황 페이지](plans/phase1-production-overview.md)
+- [2단계: 설비 관리 페이지](plans/phase2-equipment-management.md)
 
 ## 브랜치 전략
 

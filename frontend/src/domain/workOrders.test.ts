@@ -9,6 +9,7 @@ import {
   onTimeRate,
   routingProgress,
   statusCounts,
+  stoppedWorkCenters,
   workOrderTimes,
 } from './workOrders'
 
@@ -97,7 +98,7 @@ describe('estimateCompletion', () => {
     const eta = estimateCompletion(engine.state, master)
     engine.run(3 * HOUR)
     for (const order of engine.state.workOrders) {
-      expect(Math.abs(eta.get(order.id)! - order.completedAt!)).toBeLessThan(120)
+      expect(Math.abs(eta.get(order.id)!.end - order.completedAt!)).toBeLessThan(120)
     }
   })
 
@@ -109,7 +110,8 @@ describe('estimateCompletion', () => {
     engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 10 })
     engine.applyPendingCommands()
     const fifo = estimateCompletion(engine.state, master)
-    expect(fifo.get('WO-001')! < fifo.get('WO-002')!).toBe(true)
+    expect(fifo.get('WO-001')!.end).toBeLessThanOrEqual(fifo.get('WO-002')!.start + 55)
+    expect(fifo.get('WO-002')!.start).toBe(10 * 50)
     expect(fifo.has('WO-003')).toBe(false)
 
     engine.dispatch({ type: 'SET_DISPATCH_RULE', rule: 'EDD' })
@@ -118,7 +120,7 @@ describe('estimateCompletion', () => {
     const edd = estimateCompletion(engine.state, master)
     expect(edd.has('WO-001')).toBe(false)
     // 병목(조립 50초) × 10대 + 병목 뒤 공정(검사 30 + 포장 25초)
-    expect(edd.get('WO-002')).toBe(10 * 50 + 55)
+    expect(edd.get('WO-002')).toEqual({ start: 0, end: 10 * 50 + 55 })
   })
 
   it('병목을 증설하면 예상 완료가 앞당겨진다', () => {
@@ -126,13 +128,41 @@ describe('estimateCompletion', () => {
     const engine = new SimEngine(master, { seed: 1 })
     engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 40, release: true })
     engine.applyPendingCommands()
-    const before = estimateCompletion(engine.state, master).get('WO-001')!
+    const before = estimateCompletion(engine.state, master).get('WO-001')!.end
     engine.dispatch({ type: 'ADD_EQUIPMENT', workCenterId: 'ASSEMBLY' })
     engine.applyPendingCommands()
-    const after = estimateCompletion(engine.state, master).get('WO-001')!
+    const after = estimateCompletion(engine.state, master).get('WO-001')!.end
     // 조립 2대 → 병목이 가공(45초)으로 넘어간다. 마지막 1대는 뒤 공정을 한 번씩 지난다(권선 40 + 조립 50 + 검사 30 + 포장 25)
     expect(after).toBe(40 * 45 + 40 + 50 + 30 + 25)
     expect(after).toBeLessThan(before)
+  })
+})
+
+describe('지금 멈춘 작업장 반영', () => {
+  it('고장은 표준 수리 시간 − 경과, 정비는 남은 시간만큼 그 작업장을 거칠 작업지시를 늦춘다', () => {
+    const master = createBaselineMaster()
+    const engine = new SimEngine(master, { seed: 1 })
+    engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 10, release: true })
+    engine.applyPendingCommands()
+    const base = estimateCompletion(engine.state, master).get('WO-001')!.end
+    expect(stoppedWorkCenters(engine.state, master).size).toBe(0)
+
+    // CNC가 5분 전에 고장 났다고 꾸민다(표준 수리 20분 → 남은 예상 15분)
+    const cnc = engine.state.equipment[0]
+    cnc.status = 'DOWN'
+    engine.state.time = 600
+    engine.state.downtimes.push({ id: 'DT-1', equipmentId: cnc.id, reason: 'BREAKDOWN', start: 300, end: null, expected: 1200 })
+    expect(stoppedWorkCenters(engine.state, master)).toEqual(new Map([['MACHINING', 900]]))
+    expect(estimateCompletion(engine.state, master).get('WO-001')!.end).toBe(base + 600 + 900)
+
+    // 표준 시간을 넘겨도 음수가 되지 않는다
+    engine.state.time = 2000
+    expect(stoppedWorkCenters(engine.state, master).get('MACHINING')).toBe(0)
+
+    // 정비는 남은 시간 그대로
+    cnc.status = 'PM'
+    cnc.downRemaining = 120
+    expect(stoppedWorkCenters(engine.state, master).get('MACHINING')).toBe(120)
   })
 })
 

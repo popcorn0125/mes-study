@@ -1,5 +1,7 @@
 import { compareForDispatch } from './dispatch'
-import type { MasterData, SimState, Unit, WorkOrder, WorkOrderStatus } from './types'
+import { equipmentSpec } from './equipment'
+import { downtimeLog } from './maintenance'
+import type { EquipmentRuntime, MasterData, SimState, Unit, WorkOrder, WorkOrderStatus } from './types'
 
 /**
  * 작업지시 관리 계산. KPI와 마찬가지로 상태에 저장하지 않고 매번 계산한다.
@@ -106,42 +108,104 @@ function needsBottleneck(unit: Unit, flow: ItemFlow, bottleneckSeq: number): boo
 }
 
 /**
- * 작업지시별 예상 완료 시각(표준 능력 기준 근사). 하달·진행 중인 미완료 작업지시만 계산한다.
+ * 지금 멈춰 있는 작업장(설비가 모두 고장·정비 중) → 다시 돌기까지 예상 남은 시간(초).
+ * 고장은 실제 수리 시간을 끝나야 알 수 있으므로 "표준 수리 시간 − 경과 시간"으로 본다(넘었으면 0).
+ * 예방정비는 계획된 시간이라 남은 시간을 그대로 쓴다. 여러 대면 가장 먼저 돌아오는 설비 기준.
+ */
+export function stoppedWorkCenters(state: SimState, master: MasterData): Map<string, number> {
+  const byWorkCenter = new Map<string, EquipmentRuntime[]>()
+  for (const eq of state.equipment) byWorkCenter.set(eq.workCenterId, [...(byWorkCenter.get(eq.workCenterId) ?? []), eq])
+  const result = new Map<string, number>()
+  for (const [workCenterId, list] of byWorkCenter) {
+    if (!list.every((eq) => eq.status === 'DOWN' || eq.status === 'PM')) continue
+    const remaining = list.map((eq) => {
+      if (eq.status === 'PM') return eq.downRemaining
+      const repairTime = equipmentSpec(master, eq.id, workCenterId)?.reliability?.repairTime ?? 0
+      const [latest] = downtimeLog(state, eq.id, 1)
+      const elapsed = latest?.end === null ? state.time - latest.start : 0
+      return Math.max(0, repairTime - elapsed)
+    })
+    result.set(workCenterId, Math.min(...remaining))
+  }
+  return result
+}
+
+export interface WorkOrderForecast {
+  /** 예상 작업 시작 시각: 이 작업지시의 첫 남은 제품이 병목에 들어가는 시각(이미 라인 안에 있으면 지금) */
+  start: number
+  /** 예상 완료 시각 */
+  end: number
+}
+
+/**
+ * 작업지시별 예상 시작·완료 시각(표준 능력 기준 근사). 하달·진행 중인 미완료 작업지시만 계산한다.
  *
  * 1. 라인 안의 제품은 투입된 순서대로(라인은 FIFO) 병목을 지난다고 본다.
  * 2. 그 뒤 아직 투입하지 않은 수량을 투입 순서 규칙대로 줄 세운다.
  * 3. 병목 처리 시간을 차례로 누적하고, 작업지시의 마지막 제품이 병목을 지난 시각에 병목 뒤 공정 시간을 더한다.
- * 고장·자재 부족·불량은 반영하지 않는다.
+ * 4. 지금 멈춘 작업장을 아직 거쳐야 하는 작업지시는 그 작업장이 다시 돌 때까지의 예상 시간만큼 늦춘다.
+ * 앞으로 날 고장·자재 부족·불량은 반영하지 않는다.
  */
-export function estimateCompletion(state: SimState, master: MasterData): Map<string, number> {
+export function estimateCompletion(state: SimState, master: MasterData): Map<string, WorkOrderForecast> {
   const flows = itemFlows(state, master)
+  const routings = new Map(master.routings.map((r) => [r.itemId, r]))
   const bottleneckSeq = new Map(
     master.routings.map((r) => [r.itemId, r.operations[flows.get(r.itemId)!.bottleneckIndex].seq]),
   )
   const active = new Set(state.workOrders.filter(isActive).map((wo) => wo.id))
-  const lastBottleneckExit = new Map<string, number>()
+  const firstEntry = new Map<string, number>()
+  const lastExit = new Map<string, number>()
+  /** 작업지시가 아직 거쳐야 하는 공정 중 가장 앞 인덱스(라인 안 제품 기준). 투입 전 수량이 있으면 0 */
+  const earliestOp = new Map<string, number>()
   let elapsed = 0
+  const visit = (id: string, before: number, after: number) => {
+    if (!firstEntry.has(id)) firstEntry.set(id, before)
+    lastExit.set(id, after)
+  }
 
   // 1. 라인 안의 제품. Unit은 만든 순서대로 들어 있다.
   for (const unit of Object.values(state.units)) {
     if (unit.status !== 'QUEUED' && unit.status !== 'PROCESSING') continue
+    if (!active.has(unit.workOrderId)) {
+      // 보류된 작업지시의 제품도 라인을 차지하므로 시간은 더한다
+      const flow = flows.get(unit.itemId)!
+      if (needsBottleneck(unit, flow, bottleneckSeq.get(unit.itemId)!)) elapsed += flow.bottleneckTime
+      continue
+    }
     const flow = flows.get(unit.itemId)!
+    const before = elapsed
     if (needsBottleneck(unit, flow, bottleneckSeq.get(unit.itemId)!)) elapsed += flow.bottleneckTime
-    if (active.has(unit.workOrderId)) lastBottleneckExit.set(unit.workOrderId, elapsed)
+    visit(unit.workOrderId, before, elapsed)
+    earliestOp.set(unit.workOrderId, Math.min(earliestOp.get(unit.workOrderId) ?? Infinity, unit.opIndex))
   }
 
   // 2. 아직 투입하지 않은 수량
   const queue = state.workOrders.filter((wo) => isActive(wo) && wo.releasedQty < wo.qty)
   queue.sort(compareForDispatch(state.dispatchRule))
   for (const wo of queue) {
+    const before = elapsed
     elapsed += (wo.qty - wo.releasedQty) * flows.get(wo.itemId)!.bottleneckTime
-    lastBottleneckExit.set(wo.id, elapsed)
+    visit(wo.id, before, elapsed)
+    earliestOp.set(wo.id, 0)
   }
 
-  const result = new Map<string, number>()
+  // 4. 지금 멈춘 작업장
+  const stopped = stoppedWorkCenters(state, master)
+  const stopDelay = (wo: WorkOrder): number => {
+    const from = earliestOp.get(wo.id)
+    if (from === undefined || stopped.size === 0) return 0
+    const ops = routings.get(wo.itemId)!.operations.slice(from)
+    return Math.max(0, ...ops.map((op) => stopped.get(op.workCenterId) ?? 0))
+  }
+
+  const result = new Map<string, WorkOrderForecast>()
   for (const wo of state.workOrders) {
     if (!active.has(wo.id) || remainingQty(wo) === 0) continue
-    result.set(wo.id, state.time + (lastBottleneckExit.get(wo.id) ?? 0) + flows.get(wo.itemId)!.tailTime)
+    const delay = stopDelay(wo)
+    result.set(wo.id, {
+      start: state.time + (firstEntry.get(wo.id) ?? 0),
+      end: state.time + (lastExit.get(wo.id) ?? 0) + flows.get(wo.itemId)!.tailTime + delay,
+    })
   }
   return result
 }

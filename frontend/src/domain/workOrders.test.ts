@@ -38,6 +38,7 @@ function wo(fields: Partial<WorkOrder>): WorkOrder {
     releasedQty: 0,
     goodQty: 0,
     scrapQty: 0,
+    reworkQty: 0,
     createdAt: 0,
     releasedAt: 0,
     startedAt: null,

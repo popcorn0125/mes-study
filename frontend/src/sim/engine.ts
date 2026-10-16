@@ -1,5 +1,7 @@
 import { equipmentName } from '@/domain/equipment'
 import type {
+  DowntimeReason,
+  DowntimeRecord,
   Equipment,
   EquipmentRuntime,
   EquipmentStatus,
@@ -15,6 +17,7 @@ import type {
 } from '@/domain/types'
 import type { SimCommand } from './commands'
 import { WEAR_AFTER_REPAIR, failureHazard, wearDefectRate } from './failure'
+import { sampleRepairTime } from './repair'
 import { createRng } from './rng'
 import {
   SENSOR_HISTORY_SIZE,
@@ -26,10 +29,19 @@ import {
 } from './sensors'
 
 const MAX_EVENTS = 200
+const MAX_DOWNTIMES = 200
 
 /** 난수 스트림을 용도별로 나눠, 한 영역의 변경이 다른 영역의 결과를 흔들지 않게 한다. */
 const FAILURE_SEED_OFFSET = 0x9e3779b9
 const SENSOR_SEED_OFFSET = 0x85ebca6b
+const REPAIR_SEED_OFFSET = 0xc2b2ae35
+
+/** 설비 상태 → 비가동 이력 사유. 여기 없는 상태는 기록하지 않는다. */
+const DOWNTIME_REASON: Partial<Record<EquipmentStatus, DowntimeReason>> = {
+  DOWN: 'BREAKDOWN',
+  PM: 'PM',
+  STARVED_MATERIAL: 'MATERIAL',
+}
 
 export interface SimOptions {
   seed: number
@@ -46,7 +58,7 @@ export interface SimOptions {
  *  5. 작업지시 투입: 첫 공정 버퍼에 빈자리가 있는 만큼 Unit 생성
  *  6. 가공 시작: 정비 요청이 있으면 PM, BOM 자재가 있으면 차감 후 가공, 없으면 STARVED_MATERIAL
  *  7. 자동 발주: 재고 + 입고 예정이 발주점 이하인 자재
- *  8. 설비 상태별 누적 시간 기록 후 시계 진행
+ *  8. 비가동 이력 갱신, 설비 상태별 누적 시간 기록 후 시계 진행
  */
 export class SimEngine {
   readonly master: MasterData
@@ -55,6 +67,7 @@ export class SimEngine {
   private readonly rng: () => number
   private readonly failureRng: () => number
   private readonly sensorRng: () => number
+  private readonly repairRng: () => number
   private readonly routings = new Map<string, Routing>()
   private readonly workCenterOrder = new Map<string, number>()
   private readonly materials = new Map<string, Material>()
@@ -65,12 +78,16 @@ export class SimEngine {
   private nextUnitSeq = 1
   private nextPurchaseOrderSeq = 1
   private nextPlanSeq = 1
+  private nextDowntimeSeq = 1
+  /** 설비 id → 진행 중인 비가동 기록 */
+  private readonly openDowntimes = new Map<string, DowntimeRecord>()
 
   constructor(master: MasterData, options: SimOptions) {
     this.master = master
     this.rng = createRng(options.seed)
     this.failureRng = createRng(options.seed ^ FAILURE_SEED_OFFSET)
     this.sensorRng = createRng(options.seed ^ SENSOR_SEED_OFFSET)
+    this.repairRng = createRng(options.seed ^ REPAIR_SEED_OFFSET)
 
     master.workCenters.forEach((wc, i) => this.workCenterOrder.set(wc.id, i))
     for (const routing of master.routings) {
@@ -103,6 +120,7 @@ export class SimEngine {
       counters: { released: 0, completed: 0, scrapped: 0, wipSeconds: 0 },
       costs: { expediteSurcharge: 0 },
       plan: null,
+      downtimes: [],
     }
   }
 
@@ -159,6 +177,7 @@ export class SimEngine {
     this.releaseWorkOrders()
     this.startProcessing()
     this.replenishMaterials()
+    this.trackDowntimes()
     for (const eq of this.state.equipment) eq.statusTime[eq.status] += dt
     const { released, completed, scrapped } = this.state.counters
     this.state.counters.wipSeconds += (released - completed - scrapped) * dt
@@ -359,14 +378,15 @@ export class SimEngine {
 
       // 고장은 가동 중에만 일어난다. 가공 중이던 Unit은 설비에 남아 수리 후 이어서 가공한다.
       if (running && reliability && this.failureRng() < failureHazard(eq.wear) * dt) {
+        // 실제 수리 시간은 고장마다 다르다. 고장 직후에는 표준(예상) 시간만 알린다.
         eq.status = 'DOWN'
-        eq.downRemaining = reliability.repairTime
+        eq.downRemaining = sampleRepairTime(reliability.repairTime, this.repairRng())
         eq.failureCount++
         this.emit(
           'EQUIPMENT_DOWN',
           eq.id,
           'critical',
-          `${this.equipmentName(eq.id)} 고장 — 수리 ${Math.round(reliability.repairTime / 60)}분 예상`,
+          `${this.equipmentName(eq.id)} 고장 — 수리 약 ${Math.round(reliability.repairTime / 60)}분 예상`,
         )
       }
     }
@@ -686,6 +706,42 @@ export class SimEngine {
 
   private equipmentName(id: string): string {
     return this.equipmentSpecs.get(id)?.name ?? equipmentName(this.master, id)
+  }
+
+  // ── 8. 비가동 이력 ──────────────────────────────────────
+
+  /**
+   * 설비 상태가 고장·정비·자재 부족으로 바뀌면 기록을 열고, 벗어나면 닫는다.
+   * 상태를 바꾸는 코드가 여러 곳이라 tick 끝에서 한 번에 비교한다.
+   * 이번 tick부터 그 상태의 시간이 쌓이므로 start·end는 현재 시각이다.
+   */
+  private trackDowntimes(): void {
+    const now = this.state.time
+    for (const eq of this.state.equipment) {
+      const reason = DOWNTIME_REASON[eq.status] ?? null
+      const open = this.openDowntimes.get(eq.id)
+      if (open?.reason === reason) continue
+      if (open) {
+        open.end = now
+        this.openDowntimes.delete(eq.id)
+      }
+      if (!reason) continue
+      const reliability = this.equipmentSpecs.get(eq.id)?.reliability
+      const expected =
+        reason === 'BREAKDOWN' ? (reliability?.repairTime ?? null) : reason === 'PM' ? (reliability?.maintenanceTime ?? null) : null
+      const record: DowntimeRecord = {
+        id: `DT-${String(this.nextDowntimeSeq++).padStart(4, '0')}`,
+        equipmentId: eq.id,
+        reason,
+        start: now,
+        end: null,
+        expected,
+      }
+      this.openDowntimes.set(eq.id, record)
+      const downtimes = this.state.downtimes
+      downtimes.push(record)
+      if (downtimes.length > MAX_DOWNTIMES) downtimes.splice(0, downtimes.length - MAX_DOWNTIMES)
+    }
   }
 
   private emit(type: SimEvent['type'], refId: string, severity: SimEvent['severity'], message: string): void {

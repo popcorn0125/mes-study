@@ -18,3 +18,8 @@ export function sampleRepairTime(standard: number, u: number): number {
   const factor = u < split ? a + Math.sqrt(u * (b - a) * (c - a)) : b - Math.sqrt((1 - u) * (b - a) * (b - c))
   return Math.max(1, Math.round(standard * factor))
 }
+
+/** 실제 수리 시간이 나올 수 있는 범위(초) */
+export function repairTimeRange(standard: number): [number, number] {
+  return [standard * REPAIR_FACTOR_MIN, standard * REPAIR_FACTOR_MAX]
+}

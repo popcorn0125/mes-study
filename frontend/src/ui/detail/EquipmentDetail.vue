@@ -5,6 +5,7 @@ import { EQUIPMENT_STATUSES } from '@/domain/types'
 import { oee, utilization } from '@/domain/kpi'
 import { EQUIPMENT_STATUS_STYLE, SENSOR_LEVEL_STYLE } from '@/scene/colors'
 import { WEAR_DEFECT_ONSET, WEAR_FAILURE_ONSET } from '@/sim/failure'
+import { repairTimeRange } from '@/sim/repair'
 import { useSelectionStore } from '@/stores/selection'
 import { useSimStore } from '@/stores/sim'
 import SensorSparkline from '../SensorSparkline.vue'
@@ -15,6 +16,12 @@ const props = defineProps<{ id: string }>()
 const sim = useSimStore()
 const selection = useSelectionStore()
 const actionError = ref<string | null>(null)
+
+/** 고장 수리 시간: 표준 시간과 실제로 걸릴 수 있는 범위 */
+function repairTimeText(standard: number): string {
+  const [min, max] = repairTimeRange(standard).map((sec) => Math.round(sec / 60))
+  return `표준 ${Math.round(standard / 60)}분 (${min}~${max}분, 고장 시)`
+}
 
 const view = computed(() => {
   const eq = sim.state.equipment.find((e) => e.id === props.id)
@@ -51,7 +58,7 @@ const view = computed(() => {
       wearText: percent(eq.wear),
       wearColor: eq.wear >= WEAR_FAILURE_ONSET ? '#f85149' : eq.wear >= WEAR_DEFECT_ONSET ? '#d29922' : '#3fb950',
       failures: eq.failureCount,
-      repairTime: formatDuration(spec.reliability.repairTime),
+      repairTime: repairTimeText(spec.reliability.repairTime),
       maintenanceTime: formatDuration(spec.reliability.maintenanceTime),
       maintenanceRequested: eq.maintenanceRequested,
       canRequest: !eq.maintenanceRequested && eq.status !== 'DOWN' && eq.status !== 'PM',
@@ -181,7 +188,7 @@ function requestMaintenance() {
         <dt>고장 횟수</dt>
         <dd>{{ view.health.failures }}회</dd>
         <dt>수리 시간</dt>
-        <dd>{{ view.health.repairTime }} (고장 시)</dd>
+        <dd>{{ view.health.repairTime }}</dd>
         <dt>정비 시간</dt>
         <dd>{{ view.health.maintenanceTime }} (예방정비 시)</dd>
       </dl>

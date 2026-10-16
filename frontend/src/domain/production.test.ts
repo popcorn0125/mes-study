@@ -31,6 +31,7 @@ function withCompleted(state: SimState, finishedAts: number[]): SimState {
       releasedAt: 0,
       finishedAt,
       history: [],
+      materialLots: [],
     }
     state.units[unit.id] = unit
   })

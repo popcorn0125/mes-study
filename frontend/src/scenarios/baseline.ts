@@ -1,4 +1,4 @@
-import type { MasterData, Reliability, SensorSpec } from '@/domain/types'
+import type { DefectCode, MasterData, Reliability, SensorSpec } from '@/domain/types'
 
 const HOUR = 3600
 
@@ -27,6 +27,28 @@ const GENERAL_RELIABILITY: Reliability = {
   maintenanceTime: 5 * 60,
   wearDefectRate: 0.05,
 }
+
+/**
+ * 불량 유형. 공정 원인은 평소 불량률(공정 산포)에서, 마모 원인은 설비 마모로 늘어난 불량률에서 나온다.
+ * 재작업 유형은 같은 설비에서 한 번 다시 가공해 살릴 수 있고, 폐기 유형은 바로 폐기한다.
+ * 검사 공정의 불량은 "검사에서 발견한 불량"으로 기록한다.
+ */
+const DEFECT_CODES: DefectCode[] = [
+  { id: 'MC-BURR', name: '버(Burr) 잔존', workCenterId: 'MACHINING', cause: 'PROCESS', disposition: 'REWORK', weight: 6 },
+  { id: 'MC-DENT', name: '표면 찍힘', workCenterId: 'MACHINING', cause: 'PROCESS', disposition: 'SCRAP', weight: 4 },
+  { id: 'MC-DIM', name: '치수 불량(내경)', workCenterId: 'MACHINING', cause: 'WEAR', disposition: 'SCRAP', weight: 1 },
+  { id: 'WD-TURN', name: '권선 수 불량', workCenterId: 'WINDING', cause: 'PROCESS', disposition: 'REWORK', weight: 5 },
+  { id: 'WD-INSUL', name: '절연 피막 손상', workCenterId: 'WINDING', cause: 'PROCESS', disposition: 'SCRAP', weight: 5 },
+  { id: 'WD-TENSION', name: '장력 불균일', workCenterId: 'WINDING', cause: 'WEAR', disposition: 'SCRAP', weight: 1 },
+  { id: 'AS-TORQUE', name: '체결 토크 불량', workCenterId: 'ASSEMBLY', cause: 'PROCESS', disposition: 'REWORK', weight: 7 },
+  { id: 'AS-PRESS', name: '베어링 압입 불량', workCenterId: 'ASSEMBLY', cause: 'PROCESS', disposition: 'SCRAP', weight: 3 },
+  { id: 'AS-POS', name: '압입 위치 편차', workCenterId: 'ASSEMBLY', cause: 'WEAR', disposition: 'SCRAP', weight: 1 },
+  { id: 'IN-LOOK', name: '외관 불량', workCenterId: 'INSPECTION', cause: 'PROCESS', disposition: 'REWORK', weight: 3 },
+  { id: 'IN-NOISE', name: '소음·진동 초과', workCenterId: 'INSPECTION', cause: 'PROCESS', disposition: 'SCRAP', weight: 4 },
+  { id: 'IN-BEMF', name: '역기전력 미달', workCenterId: 'INSPECTION', cause: 'PROCESS', disposition: 'SCRAP', weight: 3 },
+  { id: 'IN-JIG', name: '측정 지그 오차', workCenterId: 'INSPECTION', cause: 'WEAR', disposition: 'SCRAP', weight: 1 },
+  { id: 'PK-SEAL', name: '포장 밀봉 불량', workCenterId: 'PACKING', cause: 'WEAR', disposition: 'REWORK', weight: 1 },
+]
 
 /**
  * 기본 공장: 소형 BLDC 모터 조립 라인.
@@ -151,5 +173,6 @@ export function createBaselineMaster(): MasterData {
       { itemId: 'MOTOR-A', materialId: 'BEARING-STD', qtyPer: 2, workCenterId: 'ASSEMBLY' },
       { itemId: 'MOTOR-B', materialId: 'BEARING-PRM', qtyPer: 2, workCenterId: 'ASSEMBLY' },
     ],
+    defectCodes: DEFECT_CODES,
   } satisfies MasterData)
 }

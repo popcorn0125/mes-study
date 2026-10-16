@@ -104,6 +104,22 @@ export interface BomLine {
   workCenterId: string
 }
 
+/** 불량 원인: 공정 산포(평소 불량률) / 설비 마모 */
+export type DefectCause = 'PROCESS' | 'WEAR'
+/** 불량 처리: 재작업(같은 설비에서 한 번 다시 가공) / 폐기 */
+export type Disposition = 'REWORK' | 'SCRAP'
+
+/** 불량 유형 코드. 불량이 나면 그 공정 · 원인의 유형 중 하나를 비중대로 고른다. */
+export interface DefectCode {
+  id: string
+  name: string
+  workCenterId: string
+  cause: DefectCause
+  disposition: Disposition
+  /** 같은 공정 · 같은 원인의 유형 중 뽑힐 비중 */
+  weight: number
+}
+
 export interface MasterData {
   items: Item[]
   routings: Routing[]
@@ -112,6 +128,7 @@ export interface MasterData {
   equipment: Equipment[]
   materials: Material[]
   bom: BomLine[]
+  defectCodes: DefectCode[]
 }
 
 // ── 실행 데이터 ───────────────────────────────────────────
@@ -132,6 +149,8 @@ export interface WorkOrder {
   releasedQty: number
   goodQty: number
   scrapQty: number
+  /** 재작업(다시 가공) 횟수 */
+  reworkQty: number
   createdAt: number
   releasedAt: number | null
   /** 첫 제품을 첫 공정에 투입한 시각. 하달 → 첫 투입이 대기 시간이다 */
@@ -153,6 +172,17 @@ export interface UnitHistoryEntry {
   start: number
   end: number
   result: 'GOOD' | 'DEFECT'
+  /** 불량이면 불량 유형 코드 */
+  defectCode: string | null
+  /** 재작업 가공인지(같은 공정의 두 번째 가공) */
+  rework: boolean
+}
+
+/** 제품 1개에 들어간 자재 로트 */
+export interface UnitMaterialLot {
+  materialId: string
+  lotId: string
+  qty: number
 }
 
 /** 라인을 흐르는 재공품(WIP) 1개. */
@@ -166,6 +196,8 @@ export interface Unit {
   releasedAt: number
   finishedAt: number | null
   history: UnitHistoryEntry[]
+  /** 가공 시작 때 쓴 자재 로트(추적성) */
+  materialLots: UnitMaterialLot[]
 }
 
 /**
@@ -241,9 +273,26 @@ export interface PurchaseOrder {
   expedited: boolean
 }
 
+/**
+ * 자재 입고 로트. 입고(발주)마다 하나 생기고, 가공할 때 먼저 들어온 로트부터 쓴다(FIFO).
+ * 시작 재고도 로트 하나로 본다.
+ */
+export interface MaterialLot {
+  id: string
+  materialId: string
+  /** 입고 수량 */
+  qty: number
+  remaining: number
+  receivedAt: number
+  /** 이 로트를 들여온 발주. 시작 재고는 null */
+  purchaseOrderId: string | null
+}
+
 export interface MaterialStock {
   materialId: string
   onHand: number
+  /** 남은 수량이 있는 로트 id, 먼저 들어온 순. 남은 수량의 합 = onHand */
+  lots: string[]
   /** 입고 대기 중인 발주 */
   orders: PurchaseOrder[]
 }
@@ -254,6 +303,8 @@ export interface ProductionRecord {
   opSeq: number
   equipmentId: string
   result: 'GOOD' | 'DEFECT'
+  defectCode: string | null
+  rework: boolean
   time: number
 }
 
@@ -350,4 +401,6 @@ export interface SimState {
   downtimes: DowntimeRecord[]
   /** 작업지시 투입 순서 규칙 */
   dispatchRule: DispatchRule
+  /** 자재 로트 대장(다 쓴 로트도 남긴다) */
+  materialLots: Record<string, MaterialLot>
 }

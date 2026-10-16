@@ -1,6 +1,8 @@
 import { DISPATCH_RULE_LABEL, compareForDispatch } from '@/domain/dispatch'
 import { equipmentName } from '@/domain/equipment'
 import type {
+  DefectCause,
+  DefectCode,
   DowntimeReason,
   DowntimeRecord,
   Equipment,
@@ -8,6 +10,7 @@ import type {
   EquipmentStatus,
   MasterData,
   Material,
+  MaterialLot,
   Operation,
   ProductionPlan,
   Routing,
@@ -36,6 +39,7 @@ const MAX_DOWNTIMES = 200
 const FAILURE_SEED_OFFSET = 0x9e3779b9
 const SENSOR_SEED_OFFSET = 0x85ebca6b
 const REPAIR_SEED_OFFSET = 0xc2b2ae35
+const QUALITY_SEED_OFFSET = 0x27d4eb2f
 
 /** 설비 상태 → 비가동 이력 사유. 여기 없는 상태는 기록하지 않는다. */
 const DOWNTIME_REASON: Partial<Record<EquipmentStatus, DowntimeReason>> = {
@@ -69,9 +73,13 @@ export class SimEngine {
   private readonly failureRng: () => number
   private readonly sensorRng: () => number
   private readonly repairRng: () => number
+  /** 불량 유형 선택 전용. 불량 여부 판정(rng)과 나눠 유형을 고르는 것이 생산 결과를 바꾸지 않게 한다. */
+  private readonly qualityRng: () => number
   private readonly routings = new Map<string, Routing>()
   private readonly workCenterOrder = new Map<string, number>()
   private readonly materials = new Map<string, Material>()
+  /** "작업장|원인" → 불량 유형 목록 */
+  private readonly defectCodes = new Map<string, DefectCode[]>()
   /** 설비 id → 센서·신뢰성 규격. 실행 중 추가된 설비는 같은 작업장 설비의 규격을 물려받는다. */
   private readonly equipmentSpecs = new Map<string, Equipment>()
   private queue: SimCommand[] = []
@@ -80,6 +88,7 @@ export class SimEngine {
   private nextPurchaseOrderSeq = 1
   private nextPlanSeq = 1
   private nextDowntimeSeq = 1
+  private nextLotSeq = 1
   /** 설비 id → 진행 중인 비가동 기록 */
   private readonly openDowntimes = new Map<string, DowntimeRecord>()
 
@@ -89,6 +98,7 @@ export class SimEngine {
     this.failureRng = createRng(options.seed ^ FAILURE_SEED_OFFSET)
     this.sensorRng = createRng(options.seed ^ SENSOR_SEED_OFFSET)
     this.repairRng = createRng(options.seed ^ REPAIR_SEED_OFFSET)
+    this.qualityRng = createRng(options.seed ^ QUALITY_SEED_OFFSET)
 
     master.workCenters.forEach((wc, i) => this.workCenterOrder.set(wc.id, i))
     for (const routing of master.routings) {
@@ -105,6 +115,14 @@ export class SimEngine {
       if (!this.workCenterOrder.has(line.workCenterId)) throw new Error(`BOM: 알 수 없는 작업장 ${line.workCenterId}`)
     }
     for (const eq of master.equipment) this.equipmentSpecs.set(eq.id, eq)
+    this.loadDefectCodes(master)
+
+    const lots: Record<string, MaterialLot> = {}
+    for (const m of master.materials) {
+      if (m.initialStock <= 0) continue
+      const id = `L-${m.id}-000`
+      lots[id] = { id, materialId: m.id, qty: m.initialStock, remaining: m.initialStock, receivedAt: 0, purchaseOrderId: null }
+    }
 
     this.state = {
       time: 0,
@@ -114,7 +132,10 @@ export class SimEngine {
       equipment: master.equipment.map((eq) => createEquipmentRuntime(eq)),
       cycleTimeOverride: {},
       materials: Object.fromEntries(
-        master.materials.map((m) => [m.id, { materialId: m.id, onHand: m.initialStock, orders: [] }]),
+        master.materials.map((m) => [
+          m.id,
+          { materialId: m.id, onHand: m.initialStock, lots: m.initialStock > 0 ? [`L-${m.id}-000`] : [], orders: [] },
+        ]),
       ),
       records: [],
       events: [],
@@ -123,6 +144,7 @@ export class SimEngine {
       plan: null,
       downtimes: [],
       dispatchRule: 'PRIORITY',
+      materialLots: lots,
     }
   }
 
@@ -226,6 +248,7 @@ export class SimEngine {
             releasedQty: 0,
             goodQty: 0,
             scrapQty: 0,
+            reworkQty: 0,
             createdAt: this.state.time,
             releasedAt: null,
             startedAt: null,
@@ -334,6 +357,16 @@ export class SimEngine {
       stock.orders = stock.orders.filter((po) => po.eta > this.state.time)
       for (const po of arrived) {
         stock.onHand += po.qty
+        const lot: MaterialLot = {
+          id: `L-${String(this.nextLotSeq++).padStart(4, '0')}`,
+          materialId: stock.materialId,
+          qty: po.qty,
+          remaining: po.qty,
+          receivedAt: this.state.time,
+          purchaseOrderId: po.id,
+        }
+        this.state.materialLots[lot.id] = lot
+        stock.lots.push(lot.id)
         const material = this.materials.get(stock.materialId)!
         this.emit(
           'MATERIAL_RECEIVED',
@@ -434,8 +467,12 @@ export class SimEngine {
         if (eq.remaining > 0) continue
 
         const op = this.currentOperation(unit)
-        const defectRate = op.defectRate + wearDefectRate(eq.wear, this.equipmentSpecs.get(eq.id)?.reliability)
-        const result = this.rng() < defectRate ? 'DEFECT' : 'GOOD'
+        // 난수 한 번으로 불량 여부를 정하고, 그 값이 공정 불량률 안이면 공정 산포, 넘으면 설비 마모 불량으로 본다.
+        const draw = this.rng()
+        const wearRate = wearDefectRate(eq.wear, this.equipmentSpecs.get(eq.id)?.reliability)
+        const result = draw < op.defectRate + wearRate ? 'DEFECT' : 'GOOD'
+        const defect = result === 'DEFECT' ? this.pickDefectCode(op.workCenterId, draw < op.defectRate ? 'PROCESS' : 'WEAR') : null
+        const rework = unit.history.some((h) => h.opSeq === op.seq)
         eq.processedCount++
         eq.standardTime += op.cycleTime
         unit.history.push({
@@ -444,6 +481,8 @@ export class SimEngine {
           start: eq.startedAt,
           end: this.state.time,
           result,
+          defectCode: defect?.id ?? null,
+          rework,
         })
         this.state.records.push({
           unitId: unit.id,
@@ -451,6 +490,8 @@ export class SimEngine {
           opSeq: op.seq,
           equipmentId: eq.id,
           result,
+          defectCode: defect?.id ?? null,
+          rework,
           time: this.state.time,
         })
         if (result === 'DEFECT') {
@@ -543,6 +584,7 @@ export class SimEngine {
           releasedAt: this.state.time,
           finishedAt: null,
           history: [],
+          materialLots: [],
         }
         this.state.units[unit.id] = unit
         this.state.buffers[firstWorkCenterId].push(unit.id)
@@ -586,7 +628,7 @@ export class SimEngine {
           eq.status = 'STARVED_MATERIAL'
           continue
         }
-        this.consumeMaterials(unit.itemId, eq.workCenterId)
+        this.consumeMaterials(unit, eq.workCenterId)
         buffer.shift()
         unit.status = 'PROCESSING'
         eq.unitId = head
@@ -633,13 +675,23 @@ export class SimEngine {
     return null
   }
 
-  private consumeMaterials(itemId: string, workCenterId: string): void {
+  /** BOM 자재를 차감한다. 먼저 들어온 로트부터 쓰고(FIFO), 쓴 로트를 제품에 기록한다(추적성). */
+  private consumeMaterials(unit: Unit, workCenterId: string): void {
     for (const line of this.master.bom) {
-      if (line.itemId !== itemId || line.workCenterId !== workCenterId) continue
+      if (line.itemId !== unit.itemId || line.workCenterId !== workCenterId) continue
       const stock = this.state.materials[line.materialId]
       const material = this.materials.get(line.materialId)!
       const before = stock.onHand
       stock.onHand -= line.qtyPer
+      let need = line.qtyPer
+      while (need > 0 && stock.lots.length > 0) {
+        const lot = this.state.materialLots[stock.lots[0]]
+        const take = Math.min(need, lot.remaining)
+        lot.remaining -= take
+        need -= take
+        unit.materialLots.push({ materialId: line.materialId, lotId: lot.id, qty: take })
+        if (lot.remaining === 0) stock.lots.shift()
+      }
       if (before > material.reorderPoint && stock.onHand <= material.reorderPoint) {
         // 발주점 이하는 자동 발주가 나가는 정상 흐름이라 정보로만 남긴다. 실제 위험은 MATERIAL_SHORTAGE.
         this.emit('MATERIAL_LOW', material.id, 'info', `${material.name} 재고 ${stock.onHand}${material.unit} — 발주점 이하`)
@@ -689,6 +741,43 @@ export class SimEngine {
   private hasBufferSpace(workCenterId: string): boolean {
     const wc = this.master.workCenters[this.workCenterOrder.get(workCenterId)!]
     return this.state.buffers[workCenterId].length < wc.inBufferCap
+  }
+
+  /**
+   * 불량 유형을 "작업장|원인"별로 묶고 검증한다.
+   * 불량률이 있는 공정에는 공정 원인 유형이, 마모 불량이 생길 수 있는 설비의 작업장에는 마모 원인 유형이 있어야 한다.
+   */
+  private loadDefectCodes(master: MasterData): void {
+    for (const code of master.defectCodes) {
+      if (!this.workCenterOrder.has(code.workCenterId)) throw new Error(`불량 유형 ${code.id}: 알 수 없는 작업장 ${code.workCenterId}`)
+      if (!(code.weight > 0)) throw new Error(`불량 유형 ${code.id}: 비중은 0보다 커야 합니다`)
+      const key = `${code.workCenterId}|${code.cause}`
+      this.defectCodes.set(key, [...(this.defectCodes.get(key) ?? []), code])
+    }
+    for (const routing of master.routings) {
+      for (const op of routing.operations) {
+        if (op.defectRate > 0 && !this.defectCodes.has(`${op.workCenterId}|PROCESS`)) {
+          throw new Error(`불량 유형 없음: ${op.workCenterId} 공정 불량`)
+        }
+      }
+    }
+    for (const eq of master.equipment) {
+      if (eq.reliability && eq.reliability.wearDefectRate > 0 && !this.defectCodes.has(`${eq.workCenterId}|WEAR`)) {
+        throw new Error(`불량 유형 없음: ${eq.workCenterId} 마모 불량`)
+      }
+    }
+  }
+
+  /** 그 공정 · 원인의 불량 유형 중 하나를 비중대로 고른다(qualityRng) */
+  private pickDefectCode(workCenterId: string, cause: DefectCause): DefectCode {
+    const codes = this.defectCodes.get(`${workCenterId}|${cause}`)
+    if (!codes) throw new Error(`불량 유형 없음: ${workCenterId} ${cause}`)
+    let r = this.qualityRng() * codes.reduce((sum, c) => sum + c.weight, 0)
+    for (const code of codes) {
+      r -= code.weight
+      if (r < 0) return code
+    }
+    return codes[codes.length - 1]
   }
 
   private findWorkOrder(id: string): WorkOrder | undefined {

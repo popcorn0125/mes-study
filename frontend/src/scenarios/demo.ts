@@ -18,3 +18,4 @@ export const DEMO_PLAN: Omit<ProductionPlan, 'id'> = {
 
 /** 계획을 작업지시로 나눌 로트 크기 */
 export const DEMO_LOT_SIZE = 40
+

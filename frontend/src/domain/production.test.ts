@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createBaselineMaster } from '@/scenarios/baseline'
 import { SimEngine } from '@/sim/engine'
-import { hourlyOutput, lineOee, planAttainment, plannedQtyAt, plannedUph, recentAlarms, splitIntoLots } from './production'
+import { hourlyOutput, lineOee, lotDueTimes, planAttainment, plannedQtyAt, plannedUph, recentAlarms, splitIntoLots } from './production'
 import type { ProductionPlan, SimEvent, SimState, Unit } from './types'
 
 const HOUR = 3600
@@ -62,6 +62,17 @@ describe('splitIntoLots', () => {
 
   it('로트 크기가 0 이하면 거부한다', () => {
     expect(() => splitIntoLots([{ itemId: 'A', targetQty: 10 }], 0)).toThrow()
+  })
+})
+
+describe('lotDueTimes', () => {
+  it('계획 속도로 그 로트까지 만들었어야 하는 시각을 납기로 한다', () => {
+    const lots = splitIntoLots(PLAN.lines, 40)
+    const due = lotDueTimes(PLAN, lots)
+    expect(due).toHaveLength(12)
+    expect(due[0]).toBe(40 * 60) // 시간당 60대 → 40대는 40분
+    expect(due[11]).toBe(8 * HOUR)
+    expect(lotDueTimes({ ...PLAN, startTime: HOUR }, [{ itemId: 'A', qty: 60 }])).toEqual([2 * HOUR])
   })
 })
 

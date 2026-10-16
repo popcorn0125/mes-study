@@ -71,7 +71,7 @@ const kpi = computed(() => {
 </script>
 
 <template>
-  <div class="production">
+  <div class="dash-page">
     <section
       class="kpi-grid"
       aria-label="핵심 지표"

@@ -116,6 +116,45 @@ describe('작업지시 흐름', () => {
     expect(engine.state.events.some((e) => e.type === 'WORK_ORDER_PRIORITY_CHANGED')).toBe(true)
   })
 
+  it('투입 순서 규칙: FIFO는 하달 순, EDD는 납기 빠른 순(우선순위 무시)', () => {
+    const firstWorkOrder = (rule: 'FIFO' | 'EDD') => {
+      const engine = new SimEngine(idealMaster(), { seed: 1 })
+      engine.dispatch({ type: 'SET_DISPATCH_RULE', rule })
+      engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 20, dueTime: 3 * HOUR, release: true })
+      engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 20, priority: 9, release: true })
+      engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-B', qty: 20, dueTime: HOUR, release: true })
+      engine.tick()
+      const owners = new Set(Object.values(engine.state.units).map((u) => u.workOrderId))
+      expect(owners.size).toBe(1)
+      return [...owners][0]
+    }
+    expect(firstWorkOrder('FIFO')).toBe('WO-001')
+    expect(firstWorkOrder('EDD')).toBe('WO-003')
+  })
+
+  it('기본 규칙은 우선순위이고, 규칙을 바꾸면 이벤트를 남긴다(같은 규칙이면 무시)', () => {
+    const engine = new SimEngine(idealMaster(), { seed: 1 })
+    expect(engine.state.dispatchRule).toBe('PRIORITY')
+    engine.dispatch({ type: 'SET_DISPATCH_RULE', rule: 'PRIORITY' })
+    engine.dispatch({ type: 'SET_DISPATCH_RULE', rule: 'EDD' })
+    engine.applyPendingCommands()
+    expect(engine.state.dispatchRule).toBe('EDD')
+    expect(engine.state.events.filter((e) => e.type === 'DISPATCH_RULE_CHANGED')).toHaveLength(1)
+  })
+
+  it('첫 제품을 투입한 시각을 startedAt에 남긴다', () => {
+    const engine = new SimEngine(idealMaster(), { seed: 1 })
+    engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 50, release: true })
+    engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 5, release: true })
+    engine.run(10)
+    const [first, second] = engine.state.workOrders
+    expect(first.startedAt).toBe(0)
+    expect(second.startedAt).toBeNull() // 앞 작업지시가 첫 버퍼를 채우고 있어 아직 대기
+    engine.run(3000)
+    expect(second.startedAt).toBeGreaterThan(second.releasedAt!)
+    expect(second.completedAt).toBeGreaterThan(second.startedAt!)
+  })
+
   it('release 옵션으로 생성하면 바로 하달된다', () => {
     const engine = new SimEngine(idealMaster(), { seed: 1 })
     engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 5, release: true })

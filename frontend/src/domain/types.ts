@@ -134,8 +134,16 @@ export interface WorkOrder {
   scrapQty: number
   createdAt: number
   releasedAt: number | null
+  /** 첫 제품을 첫 공정에 투입한 시각. 하달 → 첫 투입이 대기 시간이다 */
+  startedAt: number | null
   completedAt: number | null
 }
+
+/**
+ * 디스패칭 규칙: 다음에 투입할 작업지시를 고르는 기준.
+ * FIFO: 하달 순 / PRIORITY: 우선순위 높은 순 → 하달 순 / EDD: 납기 빠른 순 → 하달 순
+ */
+export type DispatchRule = 'FIFO' | 'PRIORITY' | 'EDD'
 
 export type UnitStatus = 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'SCRAPPED'
 
@@ -256,6 +264,7 @@ export type SimEventType =
   | 'WORK_ORDER_HELD'
   | 'WORK_ORDER_PRIORITY_CHANGED'
   | 'WORK_ORDER_COMPLETED'
+  | 'DISPATCH_RULE_CHANGED'
   | 'UNIT_SCRAPPED'
   | 'EQUIPMENT_ADDED'
   | 'CYCLE_TIME_CHANGED'
@@ -339,4 +348,6 @@ export interface SimState {
   plan: ProductionPlan | null
   /** 비가동 이력(최근 것만 보관) */
   downtimes: DowntimeRecord[]
+  /** 작업지시 투입 순서 규칙 */
+  dispatchRule: DispatchRule
 }

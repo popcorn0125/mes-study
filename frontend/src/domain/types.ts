@@ -58,7 +58,7 @@ export interface Reliability {
   wearPerRunHour: number
   /** 시작 시 마모도 */
   initialWear: number
-  /** 고장 수리 시간(초) — MTTR */
+  /** 표준(예상) 고장 수리 시간(초). 실제 수리 시간은 고장마다 이 값의 0.75 ~ 1.5배에서 정해진다 */
   repairTime: number
   /** 예방정비 시간(초) */
   maintenanceTime: number
@@ -293,6 +293,24 @@ export interface ProductionPlan {
   lines: { itemId: string; targetQty: number }[]
 }
 
+/** 비가동 사유: 고장(비계획), 예방정비(계획), 자재 부족(비계획) */
+export type DowntimeReason = 'BREAKDOWN' | 'PM' | 'MATERIAL'
+
+/**
+ * 비가동 한 건: 설비가 멈춘 구간.
+ * 공급 대기·막힘은 가공마다 몇 초씩 생기는 라인 흐름 손실이라 한 건씩 기록하지 않는다(상태별 누적 시간으로 본다).
+ */
+export interface DowntimeRecord {
+  id: string
+  equipmentId: string
+  reason: DowntimeReason
+  start: number
+  /** 아직 멈춰 있으면 null */
+  end: number | null
+  /** 고장·정비의 표준(예상) 시간(초). 자재 부족은 null */
+  expected: number | null
+}
+
 export interface SimState {
   time: number
   workOrders: WorkOrder[]
@@ -319,4 +337,6 @@ export interface SimState {
   }
   /** 현재 생산 계획. 계획 없이 작업지시만으로도 돌 수 있다 */
   plan: ProductionPlan | null
+  /** 비가동 이력(최근 것만 보관) */
+  downtimes: DowntimeRecord[]
 }

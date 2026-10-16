@@ -23,7 +23,7 @@ export const breakdownScenario: ScenarioDefinition = {
   hints: [
     'CNC #1을 클릭해 진동·온도 추이와 마모도를 확인하세요.',
     '설비 바닥 링이 노랗게 깜박이면 센서 경고입니다. 경보 타일도 함께 보세요.',
-    '예방정비는 5분 계획 정지, 고장 수리는 20분 비계획 정지입니다.',
+    '예방정비는 5분 계획 정지, 고장 수리는 약 20분(길면 30분) 비계획 정지입니다.',
   ],
   lessons: [
     '계획 정지(예방정비)와 비계획 정지(고장)의 비용 차이',
@@ -55,13 +55,13 @@ export const breakdownScenario: ScenarioDefinition = {
     if (maintenance.length > 0 && mine.failures === 0) {
       insights.push(
         `시작 후 ${minutes(maintenance[0].time)} 만에 CNC 예방정비를 해 고장을 막았습니다. ` +
-          '5분 계획 정지로 20분 비계획 정지를 피했습니다.',
+          '5분 계획 정지로 약 20분 비계획 정지를 피했습니다.',
       )
     } else if (maintenance.length > 0) {
       insights.push('예방정비를 했지만 고장을 완전히 막지는 못했습니다. 진동 경고가 뜬 직후가 정비 적기입니다.')
     } else if (mine.failures > 0) {
       insights.push(
-        '진동 경고를 그대로 두어 CNC가 고장났습니다. 수리하는 20분 동안 앞 공정은 막히고 뒤 공정은 일감이 끊겼습니다.',
+        `진동 경고를 그대로 두어 CNC가 고장났습니다. 수리하는 ${minutes(mine.downtime)} 동안 앞 공정은 막히고 뒤 공정은 일감이 끊겼습니다.`,
       )
     } else {
       insights.push('이번에는 운 좋게 고장이 나지 않았습니다. 하지만 마모도가 높을수록 고장 확률은 계속 올라갑니다.')

@@ -44,6 +44,8 @@ describe('BOM 자재 소비', () => {
     expect(engine.state.buffers['ASSEMBLY'].length).toBeGreaterThan(0)
     expect(assembly(engine).statusTime.STARVED_MATERIAL).toBeGreaterThan(0)
     expect(engine.state.events.some((e) => e.type === 'MATERIAL_SHORTAGE' && e.refId === 'BEARING-PRM')).toBe(true)
+    // 비가동 이력: 자재 부족 정지가 아직 진행 중인 기록으로 남는다
+    expect(engine.state.downtimes.at(-1)).toMatchObject({ equipmentId: 'ASSEMBLY-1', reason: 'MATERIAL', end: null, expected: null })
   })
 
   it('FIFO 라인이라 맨 앞 Unit의 자재가 없으면 뒤의 다른 품목도 기다린다', () => {

@@ -1,6 +1,7 @@
 import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
 import { use } from 'echarts/core'
+import type { LossKind } from '@/domain/maintenance'
 import { CanvasRenderer } from 'echarts/renderers'
 
 /**
@@ -17,4 +18,11 @@ export const CHART_COLORS = {
   good: '#3fb950',
   plan: '#c9d1d9',
   warn: '#d29922',
+}
+
+/** 설비 손실 구분 색: 비계획 정지 빨강, 계획 정지 파랑, 라인 손실 노랑 */
+export const LOSS_KIND_COLOR: Record<LossKind, string> = {
+  unplanned: '#f85149',
+  planned: '#2f81f7',
+  line: '#d29922',
 }

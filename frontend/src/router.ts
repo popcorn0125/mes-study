@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import EquipmentView from './views/EquipmentView.vue'
 import PlaceholderView from './views/PlaceholderView.vue'
 import ProductionView from './views/ProductionView.vue'
 
@@ -37,12 +38,8 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/equipment',
     name: 'equipment',
-    component: PlaceholderView,
+    component: EquipmentView,
     meta: { title: '설비 관리', icon: '⚙️' },
-    props: {
-      mesFunction: '설비 관리 / 보전',
-      concepts: ['OEE', 'MTBF / MTTR', '계획 정지와 비계획 정지', '예지보전'],
-    },
   },
   {
     path: '/quality',

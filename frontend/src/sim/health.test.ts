@@ -78,7 +78,9 @@ describe('고장과 수리', () => {
       engine.tick()
       waited++
     }
-    expect(waited).toBeLessThanOrEqual(20 * 60)
+    // 실제 수리 시간은 표준 20분의 0.75 ~ 1.5배
+    expect(waited).toBeGreaterThanOrEqual(15 * 60 - 5)
+    expect(waited).toBeLessThanOrEqual(30 * 60)
     // 수리 직후 마모도는 수리 후 값으로 돌아간다(같은 tick에 다시 가동하며 쌓인 1초분만 허용)
     expect(eq.wear).toBeLessThanOrEqual(WEAR_AFTER_REPAIR + 10 / 3600)
     expect(engine.state.events.some((e) => e.type === 'EQUIPMENT_REPAIRED')).toBe(true)
@@ -86,8 +88,78 @@ describe('고장과 수리', () => {
     expect(eq.status).toBe('RUN')
     engine.run(60)
     expect(engine.state.units[unitDuringRepair!].history[0]?.equipmentId).toBe('MACHINING-1')
-    expect(eq.statusTime.DOWN).toBe(20 * 60)
+    expect(eq.statusTime.DOWN).toBeGreaterThanOrEqual(15 * 60)
+    expect(eq.statusTime.DOWN).toBeLessThanOrEqual(30 * 60)
     expect(oee(eq).availability).toBeLessThan(1)
+  })
+
+  it('수리 시간은 고장마다 다르지만, 같은 seed면 항상 같다', () => {
+    const repairTimes = (seed: number) => {
+      const engine = start(cncOnlyMaster(0.9, 1), 2000, seed)
+      engine.run(8 * HOUR)
+      return engine.state.downtimes.filter((d) => d.reason === 'BREAKDOWN' && d.end !== null).map((d) => d.end! - d.start)
+    }
+    const first = repairTimes(3)
+    expect(first.length).toBeGreaterThan(2)
+    expect(new Set(first).size).toBeGreaterThan(1)
+    for (const t of first) {
+      expect(t).toBeGreaterThanOrEqual(15 * 60)
+      expect(t).toBeLessThanOrEqual(30 * 60)
+    }
+    expect(repairTimes(3)).toEqual(first)
+  })
+
+  it('고장 알림은 표준(예상) 수리 시간을 알린다', () => {
+    const engine = start(cncOnlyMaster(0.999, 10))
+    engine.run(5)
+    expect(engine.state.events.find((e) => e.type === 'EQUIPMENT_DOWN')?.message).toContain('수리 약 20분 예상')
+  })
+})
+
+describe('비가동 이력', () => {
+  it('고장은 BREAKDOWN 한 건으로 열렸다가 수리가 끝나면 닫히고, 기간은 DOWN 누적 시간과 같다', () => {
+    const engine = start(cncOnlyMaster(0.999, 10))
+    engine.run(5)
+    const [open] = engine.state.downtimes
+    expect(open).toMatchObject({ equipmentId: 'MACHINING-1', reason: 'BREAKDOWN', end: null, expected: 20 * 60 })
+    while (cnc(engine).status === 'DOWN') engine.tick()
+    const record = engine.state.downtimes[0]
+    expect(record.end).not.toBeNull()
+    expect(record.end! - record.start).toBe(cnc(engine).statusTime.DOWN)
+  })
+
+  it('예방정비는 PM 기록으로 남고 표준 시간과 실제 시간이 같다', () => {
+    const engine = start(cncOnlyMaster(0.1))
+    engine.dispatch({ type: 'REQUEST_MAINTENANCE', equipmentId: 'MACHINING-1' })
+    engine.run(HOUR)
+    const pm = engine.state.downtimes.filter((d) => d.reason === 'PM')
+    expect(pm).toHaveLength(1)
+    expect(pm[0].end! - pm[0].start).toBe(5 * 60)
+    expect(pm[0].expected).toBe(5 * 60)
+  })
+
+  it('기본 공장 8시간: 사유별 기록 기간의 합이 설비 상태별 누적 시간과 같다', () => {
+    const engine = new SimEngine(createBaselineMaster(), { seed: 2026 })
+    for (let i = 0; i < 12; i++) engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: i % 4 === 3 ? 'MOTOR-B' : 'MOTOR-A', qty: 40, release: true })
+    engine.run(8 * HOUR)
+    const statusOf = { BREAKDOWN: 'DOWN', PM: 'PM', MATERIAL: 'STARVED_MATERIAL' } as const
+    for (const eq of engine.state.equipment) {
+      for (const [reason, status] of Object.entries(statusOf)) {
+        const recorded = engine.state.downtimes
+          .filter((d) => d.equipmentId === eq.id && d.reason === reason)
+          .reduce((s, d) => s + (d.end ?? engine.state.time) - d.start, 0)
+        expect(recorded, `${eq.id} ${reason}`).toBe(eq.statusTime[status])
+      }
+    }
+    expect(engine.state.downtimes.some((d) => d.reason === 'BREAKDOWN')).toBe(true)
+  })
+
+  it('공급 대기·막힘은 기록하지 않는다', () => {
+    const engine = start(cncOnlyMaster(0.1))
+    engine.run(HOUR)
+    const totalLineLoss = engine.state.equipment.reduce((s, eq) => s + eq.statusTime.STARVED + eq.statusTime.BLOCKED, 0)
+    expect(totalLineLoss).toBeGreaterThan(0)
+    expect(engine.state.downtimes).toHaveLength(0)
   })
 })
 

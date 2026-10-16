@@ -15,7 +15,7 @@ export const freeScenario: ScenarioDefinition = {
     'BLDC 모터 조립 라인입니다. 8시간 동안 표준형 A 360대 · 고급형 B 120대를 만드는 생산 계획이 있고, 이를 40대씩 나눈 작업지시 12건이 납기와 함께 하달된 상태로 시작합니다.',
     '설비·버퍼·Unit·자재를 클릭해 보고, 작업지시를 만들거나 설비를 늘려 보세요.',
   ],
-  hints: ['60배속으로 돌리면 1시간 남짓에 CNC 진동 경고가, 1시간 반쯤에 고장이 나옵니다.'],
+  hints: ['60배속으로 돌리면 1시간 남짓에 CNC 진동 경고가, 2시간쯤에 고장이 나옵니다.'],
   lessons: [],
   duration: null,
   seed: DEMO_SEED,

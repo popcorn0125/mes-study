@@ -128,3 +128,57 @@ describe('자재 로트', () => {
     expect(done.materialLots.reduce((sum, l) => sum + l.qty, 0)).toBe(8)
   })
 })
+
+describe('재작업', () => {
+  /** 조립에서만 불량이 나고, 조립 공정 불량 유형을 하나로 고정한 기준정보 */
+  function reworkMaster(codeId: 'AS-TORQUE' | 'AS-PRESS', defectRate: number): MasterData {
+    const master = createBaselineMaster()
+    for (const routing of master.routings) {
+      for (const op of routing.operations) op.defectRate = op.workCenterId === 'ASSEMBLY' ? defectRate : 0
+    }
+    for (const eq of master.equipment) delete eq.reliability
+    master.defectCodes = master.defectCodes.filter((c) => c.workCenterId !== 'ASSEMBLY' || c.cause !== 'PROCESS' || c.id === codeId)
+    return master
+  }
+
+  it('재작업 유형은 같은 설비에서 한 번 다시 가공하고, 또 불량이면 폐기한다', () => {
+    const engine = new SimEngine(reworkMaster('AS-TORQUE', 1), { seed: 1 })
+    engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 3, release: true })
+    engine.run(HOUR)
+    const wo = engine.state.workOrders[0]
+    expect(wo).toMatchObject({ status: 'COMPLETED', goodQty: 0, scrapQty: 3, reworkQty: 3 })
+    for (const unit of Object.values(engine.state.units)) {
+      const assembly = unit.history.filter((h) => h.opSeq === 30)
+      expect(assembly.map((h) => [h.result, h.rework, h.defectCode])).toEqual([
+        ['DEFECT', false, 'AS-TORQUE'],
+        ['DEFECT', true, 'AS-TORQUE'],
+      ])
+      // 재작업도 사이클타임(50초)만큼 설비를 쓴다
+      expect(assembly[1].end - assembly[1].start).toBe(50)
+      expect(assembly[1].start).toBe(assembly[0].end)
+    }
+    // 재작업에는 자재를 다시 쓰지 않는다(자석 4개 × 3대)
+    expect(engine.state.materials['MAGNET'].onHand).toBe(800 - 12)
+  })
+
+  it('재작업에 성공하면 양품으로 다음 공정에 간다', () => {
+    const engine = new SimEngine(reworkMaster('AS-TORQUE', 0.3), { seed: 3 })
+    engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 30, release: true })
+    engine.run(2 * HOUR)
+    const saved = Object.values(engine.state.units).filter(
+      (u) => u.status === 'COMPLETED' && u.history.some((h) => h.rework && h.result === 'GOOD'),
+    )
+    expect(saved.length).toBeGreaterThan(0)
+    const wo = engine.state.workOrders[0]
+    expect(wo.goodQty + wo.scrapQty).toBe(30)
+    expect(wo.reworkQty).toBe(saved.length + wo.scrapQty)
+  })
+
+  it('폐기 유형은 재작업 없이 바로 폐기한다', () => {
+    const engine = new SimEngine(reworkMaster('AS-PRESS', 1), { seed: 1 })
+    engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 3, release: true })
+    engine.run(HOUR)
+    expect(engine.state.workOrders[0]).toMatchObject({ scrapQty: 3, reworkQty: 0 })
+    expect(engine.state.records.filter((r) => r.opSeq === 30)).toHaveLength(3)
+  })
+})

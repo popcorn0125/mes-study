@@ -59,7 +59,8 @@ export interface SimOptions {
  *  1. 대기 중인 명령 적용
  *  2. 자재 입고(도착 예정 시각이 된 발주)
  *  3. 설비 상태 갱신: 수리·정비 진행, 마모 누적, 센서 갱신, 고장 판정
- *  4. 가공 완료 처리(하류 설비부터): 품질 판정 → 불량은 폐기, 양품은 다음 버퍼로(가득 차 있으면 BLOCKED)
+ *  4. 가공 완료 처리(하류 설비부터): 품질 판정 → 재작업 유형이면 같은 설비에서 한 번 다시 가공, 그 밖의 불량은 폐기,
+ *     양품은 다음 버퍼로(가득 차 있으면 BLOCKED)
  *  5. 작업지시 투입: 투입 순서 규칙(dispatchRule)대로, 첫 공정 버퍼에 빈자리가 있는 만큼 Unit 생성
  *  6. 가공 시작: 정비 요청이 있으면 PM, BOM 자재가 있으면 차감 후 가공, 없으면 STARVED_MATERIAL
  *  7. 자동 발주: 재고 + 입고 예정이 발주점 이하인 자재
@@ -496,8 +497,15 @@ export class SimEngine {
         })
         if (result === 'DEFECT') {
           eq.defectCount++
+          if (defect!.disposition === 'REWORK' && !rework) {
+            // 재작업: 같은 설비에서 한 번 다시 가공한다. 그동안 설비는 새 제품을 받지 못한다(숨은 공장).
+            this.findWorkOrder(unit.workOrderId)!.reworkQty++
+            eq.startedAt = this.state.time
+            eq.remaining = this.cycleTimeOf(unit)
+            continue
+          }
           eq.unitId = null
-          this.scrap(unit, op)
+          this.scrap(unit, op, defect!)
           continue
         }
       }
@@ -537,7 +545,7 @@ export class SimEngine {
     this.closeWorkOrderIfDone(wo)
   }
 
-  private scrap(unit: Unit, op: Operation): void {
+  private scrap(unit: Unit, op: Operation, defect: DefectCode): void {
     unit.status = 'SCRAPPED'
     unit.finishedAt = this.state.time
     this.state.counters.scrapped++
@@ -547,7 +555,7 @@ export class SimEngine {
       'UNIT_SCRAPPED',
       unit.id,
       'warning',
-      `${unit.id} 불량 폐기 (${this.workCenterName(op.workCenterId)})`,
+      `${unit.id} 불량 폐기 — ${defect.name} (${this.workCenterName(op.workCenterId)})`,
     )
     this.closeWorkOrderIfDone(wo)
   }

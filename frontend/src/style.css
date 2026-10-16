@@ -916,6 +916,7 @@ select:focus-visible {
 .dash-header h1 {
   margin: 0;
   font-size: 18px;
+  white-space: nowrap;
 }
 .dash-header__sim {
   display: flex;
@@ -968,6 +969,8 @@ a.btn {
 /* ── 대시보드 페이지 공통 · 생산 현황 ──────── */
 .dash-page {
   display: grid;
+  /* 넓은 표·차트가 열을 늘려 페이지가 잘리지 않도록 열 폭을 화면에 맞춘다 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 .kpi-grid {
@@ -1303,4 +1306,175 @@ a.btn {
   border-radius: 2px;
   background: var(--tone);
   vertical-align: -1px;
+}
+
+/* ── 작업지시 관리 ─────────────────────────── */
+.wo-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+}
+.wo-flow__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wo-flow__main li:not(:last-child)::after {
+  content: '→';
+  margin-left: 8px;
+  color: #8b949e;
+}
+.wo-flow__hold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.wo-flow__step {
+  --tone: #8b949e;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--panel-border);
+  border-left: 3px solid var(--tone);
+  border-radius: 6px;
+  background: #161b22;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.wo-flow__step strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.wo-flow__step:hover { background: #21262d; }
+.wo-flow__step:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.wo-flow__step--active {
+  background: #1f2a3a;
+  border-color: var(--accent);
+  border-left-color: var(--tone);
+}
+.wo-table-wrap {
+  overflow-x: auto;
+}
+.wo-table td,
+.wo-table th {
+  padding: 6px 6px;
+}
+.wo-table__item {
+  text-align: left !important;
+}
+.wo-table__progress {
+  min-width: 110px;
+  text-align: left !important;
+}
+.wo-table__progress .progress {
+  margin-bottom: 2px;
+}
+.wo-table__progress .muted {
+  font-size: 11px;
+}
+.wo-table__row--done {
+  color: #8b949e;
+}
+.wo-status {
+  --tone: #8b949e;
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--tone);
+  color: var(--tone);
+  font-size: 11px;
+  font-weight: 600;
+}
+.wo-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.wo-due--ok { color: #3fb950; }
+.wo-due--warn { color: #d29922; font-weight: 600; }
+.wo-due--bad { color: #f85149; font-weight: 600; }
+.wo-due--muted { color: #8b949e; }
+.wo-detail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+.wo-detail__sub {
+  margin: 16px 0 6px;
+  font-size: 13px;
+}
+.wo-milestones {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.wo-milestones li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 3px solid #30363d;
+}
+.wo-milestones__done {
+  border-top-color: #3fb950 !important;
+}
+.wo-times {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.wo-times dt { color: #8b949e; }
+.wo-times dd { margin: 0; }
+.wo-ops__bar {
+  width: 40%;
+}
+.wo-ops tbody tr { cursor: default; }
+.wo-legend-due::before {
+  display: none !important;
+}
+.wo-create {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+.wo-create label:not(.dash-toggle) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8b949e;
+}
+.wo-create input,
+.wo-create select {
+  font-size: 13px;
+  padding: 6px 8px;
+}
+.wo-create__release {
+  padding-bottom: 6px;
+}
+.wo-legend-forecast::before {
+  border: 1px dashed #2f81f7;
 }

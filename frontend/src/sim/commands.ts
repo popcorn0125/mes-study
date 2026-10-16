@@ -1,4 +1,4 @@
-import type { ProductionPlan } from '@/domain/types'
+import type { DispatchRule, ProductionPlan } from '@/domain/types'
 
 /**
  * 사용자 조작은 엔진 상태를 직접 바꾸지 않고 Command로 전달한다.
@@ -12,6 +12,8 @@ export type SimCommand =
   | { type: 'RELEASE_WORK_ORDER'; workOrderId: string }
   | { type: 'HOLD_WORK_ORDER'; workOrderId: string }
   | { type: 'SET_WORK_ORDER_PRIORITY'; workOrderId: string; priority: number }
+  /** 작업지시 투입 순서 규칙을 바꾼다. 이미 투입된 제품의 순서는 바뀌지 않는다 */
+  | { type: 'SET_DISPATCH_RULE'; rule: DispatchRule }
   | { type: 'SET_CYCLE_TIME'; workCenterId: string; cycleTime: number }
   | { type: 'ADD_EQUIPMENT'; workCenterId: string }
   /** 현재 Unit을 마친 뒤 예방정비에 들어간다 */

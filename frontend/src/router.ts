@@ -28,12 +28,9 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/work-orders',
     name: 'work-orders',
-    component: PlaceholderView,
+    // 간트 차트(echarts custom)를 쓰므로 페이지를 열 때 불러온다
+    component: () => import('./views/WorkOrderView.vue'),
     meta: { title: '작업지시 관리', icon: '📋' },
-    props: {
-      mesFunction: '작업지시 / 생산 실행',
-      concepts: ['작업지시 생명주기', '라우팅', '디스패칭'],
-    },
   },
   {
     path: '/equipment',

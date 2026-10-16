@@ -1,3 +1,4 @@
+import { DISPATCH_RULE_LABEL, compareForDispatch } from '@/domain/dispatch'
 import { equipmentName } from '@/domain/equipment'
 import type {
   DowntimeReason,
@@ -55,7 +56,7 @@ export interface SimOptions {
  *  2. 자재 입고(도착 예정 시각이 된 발주)
  *  3. 설비 상태 갱신: 수리·정비 진행, 마모 누적, 센서 갱신, 고장 판정
  *  4. 가공 완료 처리(하류 설비부터): 품질 판정 → 불량은 폐기, 양품은 다음 버퍼로(가득 차 있으면 BLOCKED)
- *  5. 작업지시 투입: 첫 공정 버퍼에 빈자리가 있는 만큼 Unit 생성
+ *  5. 작업지시 투입: 투입 순서 규칙(dispatchRule)대로, 첫 공정 버퍼에 빈자리가 있는 만큼 Unit 생성
  *  6. 가공 시작: 정비 요청이 있으면 PM, BOM 자재가 있으면 차감 후 가공, 없으면 STARVED_MATERIAL
  *  7. 자동 발주: 재고 + 입고 예정이 발주점 이하인 자재
  *  8. 비가동 이력 갱신, 설비 상태별 누적 시간 기록 후 시계 진행
@@ -121,6 +122,7 @@ export class SimEngine {
       costs: { expediteSurcharge: 0 },
       plan: null,
       downtimes: [],
+      dispatchRule: 'PRIORITY',
     }
   }
 
@@ -147,6 +149,9 @@ export class SimEngine {
         if (!this.findWorkOrder(command.workOrderId) && !this.isQueuedWorkOrderId(command.workOrderId)) {
           throw new Error(`알 수 없는 작업지시: ${command.workOrderId}`)
         }
+        break
+      case 'SET_DISPATCH_RULE':
+        if (!DISPATCH_RULE_LABEL[command.rule]) throw new Error(`알 수 없는 투입 순서 규칙: ${command.rule}`)
         break
       case 'SET_CYCLE_TIME':
         this.requireWorkCenter(command.workCenterId)
@@ -223,6 +228,7 @@ export class SimEngine {
             scrapQty: 0,
             createdAt: this.state.time,
             releasedAt: null,
+            startedAt: null,
             completedAt: null,
           }
           this.state.workOrders.push(wo)
@@ -250,6 +256,11 @@ export class SimEngine {
           this.emit('WORK_ORDER_PRIORITY_CHANGED', wo.id, 'info', `작업지시 ${wo.id} 우선순위 ${command.priority}로 변경`)
           break
         }
+        case 'SET_DISPATCH_RULE':
+          if (this.state.dispatchRule === command.rule) break
+          this.state.dispatchRule = command.rule
+          this.emit('DISPATCH_RULE_CHANGED', command.rule, 'info', `투입 순서 규칙: ${DISPATCH_RULE_LABEL[command.rule]}`)
+          break
         case 'SET_CYCLE_TIME':
           this.state.cycleTimeOverride[command.workCenterId] = command.cycleTime
           this.emit(
@@ -518,7 +529,7 @@ export class SimEngine {
   private releaseWorkOrders(): void {
     const candidates = this.state.workOrders
       .filter((wo) => (wo.status === 'RELEASED' || wo.status === 'IN_PROGRESS') && wo.releasedQty < wo.qty)
-      .sort((a, b) => b.priority - a.priority || a.releasedAt! - b.releasedAt! || a.createdAt - b.createdAt)
+      .sort(compareForDispatch(this.state.dispatchRule))
 
     for (const wo of candidates) {
       const firstWorkCenterId = this.routings.get(wo.itemId)!.operations[0].workCenterId
@@ -537,6 +548,7 @@ export class SimEngine {
         this.state.buffers[firstWorkCenterId].push(unit.id)
         this.state.counters.released++
         wo.releasedQty++
+        wo.startedAt ??= this.state.time
         wo.status = 'IN_PROGRESS'
       }
     }

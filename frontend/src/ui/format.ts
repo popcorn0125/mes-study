@@ -1,5 +1,6 @@
 import { equipmentName } from '@/domain/equipment'
 import { formatDuration } from '@/domain/duration'
+import { DISPATCH_RULE_LABEL } from '@/domain/dispatch'
 import type { MasterData, UnitStatus, WorkOrderStatus } from '@/domain/types'
 import type { MetricKey, ScenarioMetrics } from '@/scenarios/types'
 import type { SimCommand } from '@/sim/commands'
@@ -88,6 +89,8 @@ export function describeCommand(command: SimCommand, names: ReturnType<typeof cr
       return `작업지시 ${command.workOrderId} 보류`
     case 'SET_WORK_ORDER_PRIORITY':
       return `작업지시 ${command.workOrderId} 우선순위 ${command.priority}`
+    case 'SET_DISPATCH_RULE':
+      return `투입 순서 규칙: ${DISPATCH_RULE_LABEL[command.rule]}`
     case 'SET_CYCLE_TIME':
       return `${names.workCenter(command.workCenterId)} 사이클타임 ${command.cycleTime}초`
     case 'ADD_EQUIPMENT':

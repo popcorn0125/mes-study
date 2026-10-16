@@ -32,6 +32,7 @@ function targetOf(event: SimEvent): Selection | null {
     case 'CYCLE_TIME_CHANGED':
       return { kind: 'workCenter', id: event.refId }
     case 'PLAN_SET':
+    case 'DISPATCH_RULE_CHANGED':
       return null
     case 'WORK_ORDER_CREATED':
     case 'WORK_ORDER_RELEASED':

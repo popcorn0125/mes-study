@@ -34,6 +34,19 @@ export function splitIntoLots(lines: ProductionPlan['lines'], lotSize: number): 
   }
 }
 
+/**
+ * 로트별 납기: 계획 속도로 그 로트까지 다 만들었어야 하는 시각(계획선과 같다).
+ * 로트는 나눈 순서대로 만든다고 보고, 앞 로트들의 수량을 누적해 계산한다.
+ */
+export function lotDueTimes(plan: Omit<ProductionPlan, 'id'>, lots: Lot[]): number[] {
+  const total = plan.lines.reduce((sum, line) => sum + line.targetQty, 0)
+  let cumulative = 0
+  return lots.map((lot) => {
+    cumulative += lot.qty
+    return plan.startTime + (cumulative / total) * plan.duration
+  })
+}
+
 /** 계획 총 목표 수량 */
 export function planTotal(plan: ProductionPlan): number {
   return plan.lines.reduce((sum, line) => sum + line.targetQty, 0)

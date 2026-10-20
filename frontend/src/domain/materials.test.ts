@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { freeScenario } from '@/scenarios'
 import { createBaselineMaster } from '@/scenarios/baseline'
-import { createScenarioEngine } from '@/scenarios/runner'
+import { materialShortageScenario } from '@/scenarios/materialShortage'
+import { createScenarioEngine, runWithActions } from '@/scenarios/runner'
 import { SimEngine } from '@/sim/engine'
 import { consumptionRate, inventorySummary, materialRows, stockCoverage, stockStatus, stockTrend } from './materials'
 import { bomTree, materialRequirements } from './mrp'
@@ -77,6 +78,18 @@ describe('재고 현황 · 요약', () => {
     const pending = state.purchaseOrders.filter((po) => po.receivedAt === null)
     expect(summary.pendingOrders).toBe(pending.length)
     if (pending.length > 0) expect(summary.nextArrival).toBe(Math.min(...pending.map((p) => p.eta)) - state.time)
+  })
+
+  it('S3(자재 부족): 고급 베어링이 결품되고 자재 부족 정지가 쌓이며, 모범 조치(긴급 발주)는 할증이 보인다', () => {
+    const none = runWithActions(createScenarioEngine(materialShortageScenario), [], HOUR)
+    const prm = materialRows(none.state, none.master).find((r) => r.material.id === 'BEARING-PRM')!
+    expect(prm.status).toBe('SHORTAGE')
+    expect(inventorySummary(none.state, none.master).materialStop).toBeGreaterThan(0)
+
+    const best = runWithActions(createScenarioEngine(materialShortageScenario), materialShortageScenario.bestActions, HOUR)
+    const summary = inventorySummary(best.state, best.master)
+    expect(summary.expediteSurcharge).toBeGreaterThan(0)
+    expect(best.state.purchaseOrders.some((po) => po.expedited && po.receivedAt !== null)).toBe(true)
   })
 
   it('재고 추이는 1분 기록에 현재 시각 점을 더하고, 그 자재의 발주만 담는다', () => {

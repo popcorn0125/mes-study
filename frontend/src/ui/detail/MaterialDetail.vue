@@ -71,6 +71,8 @@ function expedite() {
       <dd>
         <strong :style="{ color: view.color }">{{ view.onHand }}{{ view.material.unit }}</strong>
       </dd>
+      <dt>안전재고</dt>
+      <dd>{{ view.material.safetyStock }}{{ view.material.unit }}</dd>
       <dt>발주점 / 발주량</dt>
       <dd>{{ view.material.reorderPoint }} / {{ view.material.reorderQty }}{{ view.material.unit }}</dd>
       <dt>리드타임</dt>
@@ -80,6 +82,7 @@ function expedite() {
     </dl>
     <p class="hint">
       재고 + 입고 예정 수량이 발주점 이하로 내려가면 발주량만큼 자동 발주합니다.
+      발주점 = 리드타임 동안 예상 소요 + 안전재고입니다.
     </p>
 
     <div class="detail-section">

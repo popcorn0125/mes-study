@@ -47,12 +47,8 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/materials',
     name: 'materials',
-    component: PlaceholderView,
+    component: () => import('./views/MaterialView.vue'),
     meta: { title: '자재 / 재고', icon: '📦' },
-    props: {
-      mesFunction: '자재 관리',
-      concepts: ['BOM', '안전재고', '조달 리드타임'],
-    },
   },
   {
     path: '/reports',

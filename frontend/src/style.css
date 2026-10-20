@@ -940,24 +940,6 @@ select:focus-visible {
   border-radius: 8px;
   padding: 16px 20px;
 }
-.placeholder {
-  max-width: 560px;
-}
-.placeholder h2 {
-  font-size: 15px;
-  margin: 20px 0 8px;
-}
-.placeholder__eyebrow {
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #58a6ff;
-}
-.placeholder__concepts {
-  margin: 0;
-  padding-left: 20px;
-  line-height: 1.8;
-}
 a.btn {
   text-decoration: none;
   display: inline-block;
@@ -1681,4 +1663,197 @@ a.btn {
 .mat-tree ul li {
   margin: 4px 0;
   line-height: 1.8;
+}
+
+/* ── 실적 리포트 ───────────────────────────── */
+.rp-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 12px 16px;
+}
+.rp-toolbar__shift {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.rp-toolbar__shift select {
+  font-size: 13px;
+  padding: 5px 8px;
+}
+.rp-toolbar__actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.rp-state {
+  padding: 1px 8px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.rp-state--open { color: #58a6ff; border-color: #1f6feb; }
+.rp-state--closed { color: #3fb950; border-color: #238636; }
+.rp-print-title {
+  display: none;
+}
+.rp-table tbody tr,
+.rp-table tfoot tr {
+  cursor: default;
+}
+.rp-table tfoot th,
+.rp-table tfoot td {
+  font-weight: 600;
+  border-top: 2px solid var(--panel-border);
+  border-bottom: 0;
+}
+.rp-live {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid #1f6feb;
+  border-radius: 8px;
+  color: #58a6ff;
+  font-size: 10px;
+  font-weight: 600;
+}
+.dash-table .rp-notes {
+  min-width: 260px;
+  text-align: left;
+  white-space: normal;
+}
+.rp-note {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.rp-row {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+@media (max-width: 1100px) {
+  .rp-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.rp-handover {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+}
+@media (max-width: 1100px) {
+  .rp-handover {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.rp-handover__title {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.rp-events {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.rp-events li {
+  padding: 3px 0 3px 8px;
+  border-left: 3px solid #30363d;
+  margin-bottom: 4px;
+}
+.rp-events__item--warning { border-left-color: #d29922 !important; }
+.rp-events__item--critical { border-left-color: #f85149 !important; }
+.rp-carry {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+.rp-carry dt {
+  color: #8b949e;
+}
+.rp-carry dd {
+  margin: 0;
+  line-height: 1.9;
+}
+.rp-carry .q-chip {
+  margin: 0 6px 0 0;
+}
+
+/* 인쇄: 사이드바 · 머리글 조작부 · 개념 설명을 빼고 밝은 배경으로 */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+  html,
+  body,
+  #app {
+    height: auto;
+    overflow: visible;
+    background: #fff;
+    color: #000;
+  }
+  :root {
+    color-scheme: light;
+    --panel-border: #bbb;
+  }
+  .dash {
+    display: block !important;
+    height: auto !important;
+  }
+  .dash-sidebar,
+  .dash-header,
+  .rp-no-print,
+  .rp-toolbar__shift,
+  .rp-toolbar__actions,
+  .rp-state {
+    display: none !important;
+  }
+  .dash-main {
+    overflow: visible !important;
+    padding: 0 !important;
+    height: auto !important;
+  }
+  .rp-print-title {
+    display: block;
+    margin: 0;
+    font-size: 16px;
+  }
+  .card {
+    background: #fff;
+    border-color: #bbb;
+    break-inside: avoid;
+  }
+  .rp-toolbar {
+    border: 0;
+    padding: 0;
+  }
+  .kpi-card__value,
+  .dash-panel__title,
+  .dash-table th,
+  .dash-table td,
+  .rp-carry dd,
+  .rp-events li {
+    color: #000;
+  }
+  .muted,
+  .kpi-card__label,
+  .kpi-card__sub,
+  .dash-table thead th {
+    color: #555;
+  }
+  .q-chip {
+    background: #eee;
+  }
+  .wo-table-wrap {
+    overflow: visible !important;
+  }
+  .rp-events {
+    max-height: none;
+  }
 }

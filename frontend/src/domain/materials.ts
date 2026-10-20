@@ -8,6 +8,8 @@ const HOUR = 3600
  * - 재고 상태: 결품(어떤 품목도 1대 만들 수 없음) → 안전재고 이하 → 발주점 이하 → 정상
  * - 소비 속도: 재고 이력의 누적 소비량 차이 ÷ 기간. 입고와 섞이지 않는다.
  * - 재고 커버: 현재고 ÷ 소비 속도 = 지금 속도로 버틸 수 있는 시간
+ * - 결품 위험: 재고 커버가 다음 입고까지 남은 시간보다 짧다. 입고 예정이 없으면 지금 발주해도 리드타임 뒤에야 오므로
+ *   정상 리드타임과 비교한다.
  */
 
 export type StockStatus = 'SHORTAGE' | 'BELOW_SAFETY' | 'BELOW_ROP' | 'OK'
@@ -51,6 +53,10 @@ export interface MaterialRow {
   onOrder: number
   ratePerHour: number | null
   coverage: number | null
+  /** 가장 빠른 입고까지 남은 시간(초). 입고 예정이 없으면 null */
+  nextArrival: number | null
+  /** 다음 입고(없으면 정상 리드타임) 전에 재고가 바닥날 것으로 보이면 true */
+  atRisk: boolean
   status: StockStatus
   /** 재고 금액(원) */
   value: number
@@ -61,13 +67,17 @@ export function materialRows(state: SimState, master: MasterData): MaterialRow[]
   return master.materials.map((material) => {
     const stock = state.materials[material.id]
     const ratePerHour = consumptionRate(state, material.id)
+    const coverage = stockCoverage(stock.onHand, ratePerHour)
+    const nextArrival = stock.orders.length === 0 ? null : Math.min(...stock.orders.map((po) => po.eta)) - state.time
     return {
       material,
       onHand: stock.onHand,
       leadTimeDemand: material.reorderPoint - material.safetyStock,
       onOrder: stock.orders.reduce((sum, po) => sum + po.qty, 0),
       ratePerHour,
-      coverage: stockCoverage(stock.onHand, ratePerHour),
+      coverage,
+      nextArrival,
+      atRisk: coverage !== null && coverage < (nextArrival ?? material.leadTime),
       status: stockStatus(stock.onHand, material, master),
       value: stock.onHand * material.unitCost,
     }
@@ -79,6 +89,8 @@ export interface InventorySummary {
   totalValue: number
   /** 재고 커버가 가장 짧은 자재. 소비 중인 자재가 없으면 null */
   minCoverage: { materialId: string; seconds: number } | null
+  /** 결품 위험 자재 id(다음 입고 전에 바닥날 것으로 보이는 자재) */
+  atRisk: string[]
   /** 안전재고 이하(결품 포함) 자재 수 */
   belowSafety: number
   /** 입고 대기 발주 수 */
@@ -103,6 +115,7 @@ export function inventorySummary(state: SimState, master: MasterData): Inventory
   return {
     totalValue: rows.reduce((sum, r) => sum + r.value, 0),
     minCoverage,
+    atRisk: rows.filter((r) => r.atRisk).map((r) => r.material.id),
     belowSafety: rows.filter((r) => r.status === 'SHORTAGE' || r.status === 'BELOW_SAFETY').length,
     pendingOrders: pending.length,
     nextArrival: pending.length === 0 ? null : Math.min(...pending.map((po) => po.eta)) - state.time,

@@ -65,6 +65,8 @@ describe('재고 현황 · 요약', () => {
       expect(row.leadTimeDemand + row.material.safetyStock).toBe(row.material.reorderPoint)
       expect(row.onOrder).toBe(state.materials[row.material.id].orders.reduce((s, po) => s + po.qty, 0))
       expect(row.value).toBe(row.onHand * row.material.unitCost)
+      const limit = row.nextArrival ?? row.material.leadTime
+      expect(row.atRisk).toBe(row.coverage !== null && row.coverage < limit)
     }
   })
 
@@ -77,6 +79,7 @@ describe('재고 현황 · 요약', () => {
     expect(summary.minCoverage?.seconds).toBe(shortest)
     const pending = state.purchaseOrders.filter((po) => po.receivedAt === null)
     expect(summary.pendingOrders).toBe(pending.length)
+    expect(summary.atRisk).toEqual(rows.filter((r) => r.atRisk).map((r) => r.material.id))
     if (pending.length > 0) expect(summary.nextArrival).toBe(Math.min(...pending.map((p) => p.eta)) - state.time)
   })
 
@@ -84,6 +87,7 @@ describe('재고 현황 · 요약', () => {
     const none = runWithActions(createScenarioEngine(materialShortageScenario), [], HOUR)
     const prm = materialRows(none.state, none.master).find((r) => r.material.id === 'BEARING-PRM')!
     expect(prm.status).toBe('SHORTAGE')
+    expect(prm.atRisk).toBe(true) // 재고가 바닥이라 다음 입고 전에 버틸 수 없다
     expect(inventorySummary(none.state, none.master).materialStop).toBeGreaterThan(0)
 
     const best = runWithActions(createScenarioEngine(materialShortageScenario), materialShortageScenario.bestActions, HOUR)

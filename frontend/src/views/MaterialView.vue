@@ -19,13 +19,16 @@ const materialId = ref(sim.master.materials[0]?.id ?? '')
 const kpi = computed(() => {
   const s = inventorySummary(sim.state, sim.master)
   const names = createNameLookup(sim.master)
-  const lead = s.minCoverage ? sim.master.materials.find((m) => m.id === s.minCoverage!.materialId)!.leadTime : 0
   let coverageTone: KpiTone = 'neutral'
-  if (s.minCoverage) coverageTone = s.minCoverage.seconds >= lead ? 'good' : s.minCoverage.seconds >= lead / 2 ? 'warn' : 'bad'
+  if (s.minCoverage) coverageTone = s.atRisk.length > 0 ? 'bad' : 'good'
   return {
     value: formatWon(s.totalValue),
     coverage: s.minCoverage ? formatDuration(s.minCoverage.seconds) : '—',
-    coverageSub: s.minCoverage ? `${names.material(s.minCoverage.materialId)} · 리드타임 ${formatDuration(lead)}` : '소비 중인 자재 없음',
+    coverageSub: !s.minCoverage
+      ? '소비 중인 자재 없음'
+      : s.atRisk.length > 0
+        ? `결품 위험: ${s.atRisk.map(names.material).join(', ')}`
+        : `${names.material(s.minCoverage.materialId)} · 다음 입고 전까지 버팀`,
     coverageTone,
     belowSafety: String(s.belowSafety),
     belowSafetyTone: (s.belowSafety === 0 ? 'good' : 'warn') as KpiTone,
@@ -55,7 +58,7 @@ const kpi = computed(() => {
         :value="kpi.coverage"
         :sub="kpi.coverageSub"
         :tone="kpi.coverageTone"
-        hint="자재별 현재고 ÷ 최근 1시간 소비 속도 중 가장 짧은 값. 조달 리드타임보다 짧으면 주의"
+        hint="자재별 현재고 ÷ 최근 1시간 소비 속도 중 가장 짧은 값. 어느 자재든 다음 입고(없으면 조달 리드타임) 전에 바닥날 것 같으면 미달"
       />
       <KpiCard
         label="안전재고 이하"

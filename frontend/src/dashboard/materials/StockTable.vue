@@ -30,8 +30,12 @@ const rows = computed(() =>
       onOrder: r.onOrder,
       rate: perHour(r.ratePerHour, ''),
       coverage: r.coverage === null ? '소비 없음' : formatDuration(r.coverage),
-      // 재고 커버가 조달 리드타임보다 짧으면 지금 발주해도 늦을 수 있다
-      coverageShort: r.coverage !== null && r.coverage < m.leadTime,
+      atRisk: r.atRisk,
+      riskHint: r.atRisk
+        ? r.nextArrival === null
+          ? `입고 예정이 없고, 지금 발주해도 ${formatDuration(m.leadTime)} 뒤에 옵니다`
+          : `다음 입고(${formatDuration(r.nextArrival)} 후) 전에 바닥날 수 있습니다`
+        : undefined,
       status: STOCK_STATUS_LABEL[r.status],
       color: STOCK_STATUS_COLOR[r.status],
       value: formatWon(r.value),
@@ -79,7 +83,7 @@ const rows = computed(() =>
             </th>
             <th
               scope="col"
-              title="현재고 ÷ 시간당 소요. 지금 속도로 버틸 수 있는 시간"
+              title="현재고 ÷ 시간당 소요. 지금 속도로 버틸 수 있는 시간. 다음 입고 전에 바닥날 것 같으면 ⚠"
             >
               재고 커버
             </th>
@@ -133,10 +137,10 @@ const rows = computed(() =>
             <td>{{ r.onOrder || '—' }}</td>
             <td>{{ r.rate }}</td>
             <td
-              :class="{ 'text-warn': r.coverageShort }"
-              :title="r.coverageShort ? '재고 커버가 정상 조달 리드타임보다 짧습니다' : undefined"
+              :class="{ 'text-ng': r.atRisk }"
+              :title="r.riskHint"
             >
-              {{ r.coverage }}
+              {{ r.coverage }}<span v-if="r.atRisk"> ⚠</span>
             </td>
             <td>
               <span

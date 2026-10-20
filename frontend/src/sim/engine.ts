@@ -6,6 +6,7 @@ import type {
   DowntimeReason,
   DowntimeRecord,
   Equipment,
+  EquipmentCounters,
   EquipmentRuntime,
   EquipmentStatus,
   MasterData,
@@ -39,6 +40,9 @@ const MAX_DOWNTIMES = 200
 /** 재고 이력 기록 간격(초)과 보관 개수(24시간분) */
 export const STOCK_SAMPLE_INTERVAL = 60
 export const STOCK_HISTORY_SIZE = 24 * 60
+/** 설비 누적값 기록 간격(초)과 보관 개수(7일분) */
+export const EQUIPMENT_SAMPLE_INTERVAL = 3600
+export const EQUIPMENT_HISTORY_SIZE = 7 * 24
 
 /** 난수 스트림을 용도별로 나눠, 한 영역의 변경이 다른 영역의 결과를 흔들지 않게 한다. */
 const FAILURE_SEED_OFFSET = 0x9e3779b9
@@ -69,7 +73,7 @@ export interface SimOptions {
  *  5. 작업지시 투입: 투입 순서 규칙(dispatchRule)대로, 첫 공정 버퍼에 빈자리가 있는 만큼 Unit 생성
  *  6. 가공 시작: 정비 요청이 있으면 PM, BOM 자재가 있으면 차감 후 가공, 없으면 STARVED_MATERIAL
  *  7. 자동 발주: 재고 + 입고 예정이 발주점 이하인 자재
- *  8. 비가동 이력 갱신, 설비 상태별 누적 시간 기록 후 시계 진행, 1분마다 재고 기록
+ *  8. 비가동 이력 갱신, 설비 상태별 누적 시간 기록 후 시계 진행, 1분마다 재고 · 1시간마다 설비 누적값 기록
  */
 export class SimEngine {
   readonly master: MasterData
@@ -164,8 +168,10 @@ export class SimEngine {
       materialLots: lots,
       purchaseOrders: [],
       stockHistory: [],
+      equipmentHistory: [],
     }
     this.recordStock()
+    this.recordEquipment()
   }
 
   /** 명령을 큐에 넣는다. 존재하지 않는 대상을 가리키면 즉시 예외를 던진다. */
@@ -230,6 +236,7 @@ export class SimEngine {
     this.state.counters.wipSeconds += (released - completed - scrapped) * dt
     this.state.time += dt
     if (this.state.time % STOCK_SAMPLE_INTERVAL === 0) this.recordStock()
+    if (this.state.time % EQUIPMENT_SAMPLE_INTERVAL === 0) this.recordEquipment()
   }
 
   /** seconds초 동안 1초 단위로 진행한다. */
@@ -779,6 +786,21 @@ export class SimEngine {
     }
     this.state.stockHistory.push(sample)
     if (this.state.stockHistory.length > STOCK_HISTORY_SIZE) this.state.stockHistory.shift()
+  }
+
+  /** 설비별 누적값을 기록한다(구간 가동률 · OEE 계산용) */
+  private recordEquipment(): void {
+    const equipment: Record<string, EquipmentCounters> = {}
+    for (const eq of this.state.equipment) {
+      equipment[eq.id] = {
+        statusTime: { ...eq.statusTime },
+        processedCount: eq.processedCount,
+        defectCount: eq.defectCount,
+        standardTime: eq.standardTime,
+      }
+    }
+    this.state.equipmentHistory.push({ time: this.state.time, equipment })
+    if (this.state.equipmentHistory.length > EQUIPMENT_HISTORY_SIZE) this.state.equipmentHistory.shift()
   }
 
   // ── 보조 ────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { EQUIPMENT_STATUSES, type EquipmentRuntime, type MasterData, type SimState, type Unit } from './types'
+import { EQUIPMENT_STATUSES, type EquipmentCounters, type EquipmentRuntime, type MasterData, type SimState, type Unit } from './types'
 
 /**
  * KPI는 상태에 저장하지 않고 스냅샷에서 매번 계산한다.
@@ -39,7 +39,7 @@ export function averageLeadTime(state: SimState): number {
   return count === 0 ? 0 : sum / count
 }
 
-function totalTime(eq: EquipmentRuntime): number {
+function totalTime(eq: EquipmentCounters): number {
   return EQUIPMENT_STATUSES.reduce((sum, s) => sum + eq.statusTime[s], 0)
 }
 
@@ -63,7 +63,7 @@ export interface Oee {
  * - 성능: 표준 사이클타임 기준 기대 가공시간 / 실제 RUN 시간. 사이클타임이 표준보다 느려지면 떨어진다.
  * - 품질: 양품 / 가공 수.
  */
-export function oee(eq: EquipmentRuntime): Oee {
+export function oee(eq: EquipmentCounters): Oee {
   const planned = totalTime(eq) - eq.statusTime.PM
   const unplannedStops = eq.statusTime.DOWN + eq.statusTime.STARVED_MATERIAL
   const availability = planned <= 0 ? 0 : (planned - unplannedStops) / planned

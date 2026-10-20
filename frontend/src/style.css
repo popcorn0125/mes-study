@@ -1850,6 +1850,15 @@ a.btn {
   .q-chip {
     background: #eee;
   }
+  /* 위의 검정 글자색보다 뒤에 두어, 인쇄에서도 음수 · 불량 강조가 남게 한다 */
+  .dash-table .text-ng,
+  .text-ng {
+    color: #c62828;
+  }
+  .dash-table .text-warn,
+  .text-warn {
+    color: #9a6700;
+  }
   .wo-table-wrap {
     overflow: visible !important;
   }

@@ -19,6 +19,8 @@ function toneOf(ratio: number | null, good: number, warn: number): KpiTone {
 const kpi = computed(() => {
   const s = shiftSummary(sim.state, props.shift)
   const planUph = sim.state.plan ? plannedUph(sim.state.plan) : null
+  /** 계획 수량이 0인 교대(작업지시를 다 끝낸 뒤 대기): 낮은 OEE · UPH는 미달이 아니다 */
+  const idle = s.plan === 0
   const stopTotal = s.stops ? s.stops.DOWN + s.stops.PM + s.stops.STARVED_MATERIAL : null
   return {
     output: s.plan === null ? String(s.good) : `${s.good} / ${Math.floor(s.plan)}`,
@@ -28,10 +30,11 @@ const kpi = computed(() => {
     yieldSub: `FPY ${percent(s.fpy, 1)} · 폐기 ${s.scrap} · 재작업 ${s.reworks}`,
     yieldTone: toneOf(s.finalYield, 0.98, 0.95),
     oee: percent(s.lineOee, 1),
-    oeeTone: toneOf(s.lineOee, 0.85, 0.6),
+    oeeSub: idle ? '교대 구간 · 계획 없음(대기)' : '교대 구간 · 설비 평균',
+    oeeTone: idle ? ('neutral' as KpiTone) : toneOf(s.lineOee, 0.85, 0.6),
     uph: s.uph === null ? '—' : s.uph.toFixed(1),
     uphSub: planUph === null ? '교대 평균' : `계획 ${planUph.toFixed(0)} · 교대 평균`,
-    uphTone: planUph === null || s.uph === null ? ('neutral' as KpiTone) : toneOf(s.uph / planUph, 0.95, 0.85),
+    uphTone: idle || planUph === null || s.uph === null ? ('neutral' as KpiTone) : toneOf(s.uph / planUph, 0.95, 0.85),
     stop: stopTotal === null ? '—' : formatDuration(stopTotal),
     stopSub: s.stops
       ? `고장 ${formatDuration(s.stops.DOWN)} · 정비 ${formatDuration(s.stops.PM)} · 자재 ${formatDuration(s.stops.STARVED_MATERIAL)}`
@@ -67,7 +70,7 @@ const kpi = computed(() => {
     <KpiCard
       label="라인 OEE"
       :value="kpi.oee"
-      sub="교대 구간 · 설비 평균"
+      :sub="kpi.oeeSub"
       :tone="kpi.oeeTone"
       hint="설비별 교대 구간 OEE(가용성 × 성능 × 품질)의 평균"
     />

@@ -55,8 +55,8 @@ const DEFECT_CODES: DefectCode[] = [
  * 하우징 가공 → 스테이터 권선 → 조립 → 검사 → 포장
  * 표준형(A)과 고급형(B)은 같은 경로를 지나고, B는 조립·검사가 조금 더 오래 걸리며 고급 베어링을 쓴다.
  *
- * 자재 발주점은 정상 리드타임 동안의 소요량보다 크게 잡아, 기본 상태에서는 결품이 나지 않게 했다
- * (표준 베어링은 A만 생산할 때 시간당 약 120개 × 1.5시간 = 180개 소요).
+ * 자재 발주점 = 정상 리드타임 동안의 소요량 + 안전재고로 잡아, 기본 상태에서는 결품이 나지 않게 했다.
+ * 안전재고는 자유 체험에서 측정한 소비 속도로 정했다(예: 하우징 시간당 약 70개 × 1시간 + 안전재고 30 = 발주점 100).
  * 호출할 때마다 독립된 사본을 돌려준다(시나리오·테스트가 고쳐 써도 서로 영향이 없도록).
  */
 export function createBaselineMaster(): MasterData {
@@ -107,6 +107,7 @@ export function createBaselineMaster(): MasterData {
         name: '하우징 소재',
         unit: '개',
         initialStock: 200,
+        safetyStock: 30,
         reorderPoint: 100,
         reorderQty: 150,
         leadTime: 1 * HOUR,
@@ -119,6 +120,7 @@ export function createBaselineMaster(): MasterData {
         name: '동선 코일',
         unit: '개',
         initialStock: 200,
+        safetyStock: 30,
         reorderPoint: 100,
         reorderQty: 150,
         leadTime: 1 * HOUR,
@@ -131,6 +133,7 @@ export function createBaselineMaster(): MasterData {
         name: '영구자석',
         unit: '개',
         initialStock: 800,
+        safetyStock: 110,
         reorderPoint: 500,
         reorderQty: 600,
         leadTime: 1.5 * HOUR,
@@ -143,6 +146,7 @@ export function createBaselineMaster(): MasterData {
         name: '표준 베어링',
         unit: '개',
         initialStock: 300,
+        safetyStock: 50,
         reorderPoint: 200,
         reorderQty: 300,
         leadTime: 1.5 * HOUR,
@@ -155,6 +159,7 @@ export function createBaselineMaster(): MasterData {
         name: '고급 베어링',
         unit: '개',
         initialStock: 100,
+        safetyStock: 10,
         reorderPoint: 60,
         reorderQty: 100,
         leadTime: 1.5 * HOUR,

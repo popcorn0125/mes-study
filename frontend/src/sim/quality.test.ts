@@ -97,6 +97,7 @@ describe('자재 로트', () => {
       const magnet = m.materials.find((x) => x.id === 'MAGNET')!
       magnet.initialStock = 6 // 4개씩 쓰므로 두 번째 제품은 두 로트에 걸친다
       magnet.reorderPoint = 0
+      magnet.safetyStock = 0
     })
     const engine = new SimEngine(master, { seed: 1 })
     engine.dispatch({ type: 'EXPEDITE_MATERIAL', materialId: 'MAGNET', qty: 100 })

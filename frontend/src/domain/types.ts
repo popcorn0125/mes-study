@@ -81,6 +81,11 @@ export interface Material {
   /** 수량 단위 (예: 개) */
   unit: string
   initialStock: number
+  /**
+   * 안전재고: 소요가 예상보다 빠르거나 입고가 늦을 때를 버티는 완충 재고.
+   * 발주점 = 리드타임 동안 예상 소요 + 안전재고. 엔진은 발주에 쓰지 않고, 재고가 이 값 이하로 내려가면 경고만 한다.
+   */
+  safetyStock: number
   /** 재고 + 입고 예정 수량이 이 값 이하로 내려가면 자동 발주 */
   reorderPoint: number
   /** 자동 발주 수량 */
@@ -271,6 +276,10 @@ export interface PurchaseOrder {
   /** 입고 예정 시각 */
   eta: number
   expedited: boolean
+  /** 입고 시각. 입고 전이면 null */
+  receivedAt: number | null
+  /** 입고로 만든 로트. 입고 전이면 null */
+  lotId: string | null
 }
 
 /**
@@ -295,6 +304,15 @@ export interface MaterialStock {
   lots: string[]
   /** 입고 대기 중인 발주 */
   orders: PurchaseOrder[]
+  /** 시작부터 쓴 누적 수량. 기간 동안 늘어난 양 ÷ 기간 = 소비 속도 */
+  consumed: number
+}
+
+/** 일정 간격으로 기록한 자재별 재고 · 누적 소비 */
+export interface StockSample {
+  time: number
+  onHand: Record<string, number>
+  consumed: Record<string, number>
 }
 
 export interface ProductionRecord {
@@ -328,6 +346,7 @@ export type SimEventType =
   | 'MAINTENANCE_DONE'
   | 'MATERIAL_SHORTAGE'
   | 'MATERIAL_LOW'
+  | 'MATERIAL_BELOW_SAFETY'
   | 'MATERIAL_ORDERED'
   | 'MATERIAL_RECEIVED'
 
@@ -403,4 +422,8 @@ export interface SimState {
   dispatchRule: DispatchRule
   /** 자재 로트 대장(다 쓴 로트도 남긴다) */
   materialLots: Record<string, MaterialLot>
+  /** 발주 대장: 입고 대기 · 입고 완료 발주 모두(발주 순) */
+  purchaseOrders: PurchaseOrder[]
+  /** 재고 이력(STOCK_SAMPLE_INTERVAL마다, 최근 것만 보관) */
+  stockHistory: StockSample[]
 }

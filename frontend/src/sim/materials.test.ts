@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { MasterData } from '@/domain/types'
 import { createBaselineMaster } from '@/scenarios/baseline'
-import { SimEngine } from './engine'
+import { STOCK_SAMPLE_INTERVAL, SimEngine } from './engine'
 
 const HOUR = 3600
 
@@ -100,7 +100,8 @@ describe('발주', () => {
     const scenario = (expedite: boolean) => {
       const master = materialMaster((m) => {
         material(m, 'BEARING-PRM').initialStock = 10
-        material(m, 'BEARING-PRM').reorderPoint = 0
+        material(m, 'BEARING-PRM').reorderPoint = 0 // 자동 발주 없음
+        material(m, 'BEARING-PRM').safetyStock = 0
       })
       const engine = new SimEngine(master, { seed: 1 })
       engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-B', qty: 30, release: true })
@@ -120,5 +121,66 @@ describe('발주', () => {
     expect(() => engine.dispatch({ type: 'EXPEDITE_MATERIAL', materialId: 'NOPE', qty: 1 })).toThrow()
     expect(() => engine.dispatch({ type: 'EXPEDITE_MATERIAL', materialId: 'COIL', qty: 0 })).toThrow()
     expect(() => engine.dispatch({ type: 'REQUEST_MAINTENANCE', equipmentId: 'NOPE' })).toThrow()
+  })
+})
+
+describe('안전재고 · 발주 대장 · 재고 이력', () => {
+  it('재고가 안전재고 이하로 처음 내려갈 때 한 번 경고하고, 입고로 회복하면 다시 경고할 수 있다', () => {
+    const master = materialMaster((m) => {
+      const housing = material(m, 'HOUSING')
+      housing.initialStock = 6
+      housing.safetyStock = 4
+      housing.reorderPoint = 4
+      housing.reorderQty = 10
+      housing.leadTime = 1800
+    })
+    const engine = new SimEngine(master, { seed: 1 })
+    engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 20, release: true })
+    const warnings = () => engine.state.events.filter((e) => e.type === 'MATERIAL_BELOW_SAFETY')
+    engine.run(1200) // 6 → 4 이하로 내려간 뒤에도 계속 소비
+    expect(warnings()).toHaveLength(1)
+    expect(warnings()[0]).toMatchObject({ refId: 'HOUSING', severity: 'warning' })
+    engine.run(HOUR) // 입고(10개)로 안전재고 위로 회복 → 다시 내려감
+    expect(warnings()).toHaveLength(2)
+  })
+
+  it('안전재고가 음수이거나 발주점보다 크면 기준정보 오류다', () => {
+    const tooBig = materialMaster((m) => {
+      material(m, 'COIL').safetyStock = material(m, 'COIL').reorderPoint + 1
+    })
+    expect(() => new SimEngine(tooBig, { seed: 1 })).toThrow(/안전재고/)
+    const negative = materialMaster((m) => {
+      material(m, 'COIL').safetyStock = -1
+    })
+    expect(() => new SimEngine(negative, { seed: 1 })).toThrow(/안전재고/)
+  })
+
+  it('발주 대장에 입고 완료 발주도 남고, 입고 시각과 만든 로트를 기록한다', () => {
+    const engine = new SimEngine(materialMaster(), { seed: 1 })
+    engine.dispatch({ type: 'EXPEDITE_MATERIAL', materialId: 'COIL', qty: 30 })
+    engine.applyPendingCommands()
+    const po = engine.state.purchaseOrders[0]
+    expect(po).toMatchObject({ materialId: 'COIL', qty: 30, expedited: true, receivedAt: null, lotId: null })
+    engine.run(po.eta + 1)
+    expect(engine.state.materials['COIL'].orders).toHaveLength(0)
+    expect(engine.state.purchaseOrders).toHaveLength(1)
+    expect(po.receivedAt).toBe(po.eta)
+    expect(engine.state.materialLots[po.lotId!]).toMatchObject({ qty: 30, purchaseOrderId: po.id })
+  })
+
+  it('누적 소비량은 쓴 수량의 합이고, 1분마다 재고 · 누적 소비를 기록한다', () => {
+    const engine = new SimEngine(materialMaster(), { seed: 1 })
+    engine.dispatch({ type: 'CREATE_WORK_ORDER', itemId: 'MOTOR-A', qty: 5, release: true })
+    engine.run(HOUR)
+    const stocks = engine.state.materials
+    expect(stocks['MAGNET'].consumed).toBe(5 * 4)
+    expect(stocks['BEARING-STD'].consumed).toBe(5 * 2)
+    expect(stocks['BEARING-PRM'].consumed).toBe(0)
+
+    const history = engine.state.stockHistory
+    expect(history[0]).toMatchObject({ time: 0, onHand: { HOUSING: 200 }, consumed: { HOUSING: 0 } })
+    expect(history).toHaveLength(HOUR / STOCK_SAMPLE_INTERVAL + 1)
+    expect(history.every((s, i) => s.time === i * STOCK_SAMPLE_INTERVAL)).toBe(true)
+    expect(history.at(-1)).toMatchObject({ time: HOUR, onHand: { MAGNET: 800 - 20 }, consumed: { MAGNET: 20 } })
   })
 })

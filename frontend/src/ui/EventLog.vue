@@ -26,6 +26,7 @@ function targetOf(event: SimEvent): Selection | null {
       return { kind: 'equipment', id: event.refId }
     case 'MATERIAL_SHORTAGE':
     case 'MATERIAL_LOW':
+    case 'MATERIAL_BELOW_SAFETY':
     case 'MATERIAL_ORDERED':
     case 'MATERIAL_RECEIVED':
       return { kind: 'material', id: event.refId }

@@ -239,6 +239,15 @@ export interface SensorSample {
   vibration: number
 }
 
+/** 설비 누적 실적값. 두 시점의 차이로 구간 가동률 · OEE를 계산한다 */
+export type EquipmentCounters = Pick<EquipmentRuntime, 'statusTime' | 'processedCount' | 'defectCount' | 'standardTime'>
+
+/** 정시마다 기록한 설비별 누적값 */
+export interface EquipmentSample {
+  time: number
+  equipment: Record<string, EquipmentCounters>
+}
+
 export interface EquipmentRuntime {
   id: string
   workCenterId: string
@@ -422,6 +431,8 @@ export interface SimState {
   dispatchRule: DispatchRule
   /** 자재 로트 대장(다 쓴 로트도 남긴다) */
   materialLots: Record<string, MaterialLot>
+  /** 설비 누적값 이력(EQUIPMENT_SAMPLE_INTERVAL마다, 최근 것만 보관). 구간 가동률 · OEE 계산용 */
+  equipmentHistory: EquipmentSample[]
   /** 발주 대장: 입고 대기 · 입고 완료 발주 모두(발주 순) */
   purchaseOrders: PurchaseOrder[]
   /** 재고 이력(STOCK_SAMPLE_INTERVAL마다, 최근 것만 보관) */

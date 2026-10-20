@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import EquipmentView from './views/EquipmentView.vue'
-import PlaceholderView from './views/PlaceholderView.vue'
 import ProductionView from './views/ProductionView.vue'
 
 declare module 'vue-router' {
@@ -16,7 +15,6 @@ declare module 'vue-router' {
 
 /**
  * 페이지는 MES 기능 단위로 나눈다(docs/dashboard-plan.md).
- * 아직 만들지 않은 페이지는 PlaceholderView가 MES 기능과 익힐 개념을 보여준다.
  */
 export const routes: RouteRecordRaw[] = [
   {
@@ -53,12 +51,8 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/reports',
     name: 'reports',
-    component: PlaceholderView,
+    component: () => import('./views/ReportView.vue'),
     meta: { title: '실적 리포트', icon: '📈' },
-    props: {
-      mesFunction: '성과 분석',
-      concepts: ['교대(Shift)', '일일 생산 보고'],
-    },
   },
   {
     path: '/training',

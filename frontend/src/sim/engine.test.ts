@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { MasterData, SimState } from '@/domain/types'
 import { averageLeadTime, bottleneck, effectiveCycleTimes, oee, throughputPerHour, wip, yieldRate } from '@/domain/kpi'
 import { createBaselineMaster } from '@/scenarios/baseline'
-import { SimEngine } from './engine'
+import { EQUIPMENT_SAMPLE_INTERVAL, SimEngine } from './engine'
 
 const HOUR = 3600
 
@@ -337,5 +337,32 @@ describe('생산 계획', () => {
     expect(dispatchPlan({ ...PLAN, lines: [] })).toThrow()
     expect(dispatchPlan({ ...PLAN, lines: [{ itemId: 'NOPE', targetQty: 10 }] })).toThrow()
     expect(dispatchPlan({ ...PLAN, lines: [{ itemId: 'MOTOR-A', targetQty: 0 }] })).toThrow()
+  })
+})
+
+describe('설비 누적값 기록', () => {
+  it('시작과 매 정시에 설비별 상태 시간 · 가공 수를 기록하고, 마지막 기록은 그 시각의 누적값과 같다', () => {
+    const engine = startEngine(createBaselineMaster(), 200)
+    engine.run(3 * HOUR)
+    const history = engine.state.equipmentHistory
+    expect(history.map((s) => s.time)).toEqual([0, 1, 2, 3].map((h) => h * EQUIPMENT_SAMPLE_INTERVAL))
+    expect(history[0].equipment['ASSEMBLY-1'].processedCount).toBe(0)
+    for (const eq of engine.state.equipment) {
+      const last = history.at(-1)!.equipment[eq.id]
+      expect(last.statusTime).toEqual(eq.statusTime)
+      expect(last.processedCount).toBe(eq.processedCount)
+      expect(last.defectCount).toBe(eq.defectCount)
+      expect(last.standardTime).toBe(eq.standardTime)
+      // 상태 시간 합 = 경과 시간
+      expect(Object.values(last.statusTime).reduce((a, b) => a + b, 0)).toBe(3 * HOUR)
+    }
+  })
+
+  it('기록은 사본이라 이후 진행에 따라 바뀌지 않는다', () => {
+    const engine = startEngine(createBaselineMaster(), 200)
+    engine.run(HOUR)
+    const snapshot = structuredClone(engine.state.equipmentHistory[1])
+    engine.run(HOUR)
+    expect(engine.state.equipmentHistory[1]).toEqual(snapshot)
   })
 })

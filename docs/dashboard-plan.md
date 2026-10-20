@@ -63,6 +63,7 @@
 - [2단계: 설비 관리 페이지](plans/phase2-equipment-management.md)
 - [3단계: 작업지시 관리 페이지](plans/phase3-work-order-management.md)
 - [4단계: 품질 관리 페이지](plans/phase4-quality-management.md)
+- [5단계: 자재 / 재고 페이지](plans/phase5-material-management.md)
 
 ## 브랜치 전략
 

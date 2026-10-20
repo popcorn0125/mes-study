@@ -13,9 +13,11 @@ import type {
   MaterialLot,
   Operation,
   ProductionPlan,
+  PurchaseOrder,
   Routing,
   SimEvent,
   SimState,
+  StockSample,
   Unit,
   WorkOrder,
 } from '@/domain/types'
@@ -34,6 +36,9 @@ import {
 
 const MAX_EVENTS = 200
 const MAX_DOWNTIMES = 200
+/** 재고 이력 기록 간격(초)과 보관 개수(24시간분) */
+export const STOCK_SAMPLE_INTERVAL = 60
+export const STOCK_HISTORY_SIZE = 24 * 60
 
 /** 난수 스트림을 용도별로 나눠, 한 영역의 변경이 다른 영역의 결과를 흔들지 않게 한다. */
 const FAILURE_SEED_OFFSET = 0x9e3779b9
@@ -64,7 +69,7 @@ export interface SimOptions {
  *  5. 작업지시 투입: 투입 순서 규칙(dispatchRule)대로, 첫 공정 버퍼에 빈자리가 있는 만큼 Unit 생성
  *  6. 가공 시작: 정비 요청이 있으면 PM, BOM 자재가 있으면 차감 후 가공, 없으면 STARVED_MATERIAL
  *  7. 자동 발주: 재고 + 입고 예정이 발주점 이하인 자재
- *  8. 비가동 이력 갱신, 설비 상태별 누적 시간 기록 후 시계 진행
+ *  8. 비가동 이력 갱신, 설비 상태별 누적 시간 기록 후 시계 진행, 1분마다 재고 기록
  */
 export class SimEngine {
   readonly master: MasterData
@@ -110,7 +115,12 @@ export class SimEngine {
       }
       this.routings.set(routing.itemId, routing)
     }
-    for (const material of master.materials) this.materials.set(material.id, material)
+    for (const material of master.materials) {
+      if (!(material.safetyStock >= 0 && material.safetyStock <= material.reorderPoint)) {
+        throw new Error(`자재 ${material.id}: 안전재고는 0 이상, 발주점 이하여야 합니다`)
+      }
+      this.materials.set(material.id, material)
+    }
     for (const line of master.bom) {
       if (!this.materials.has(line.materialId)) throw new Error(`BOM: 알 수 없는 자재 ${line.materialId}`)
       if (!this.workCenterOrder.has(line.workCenterId)) throw new Error(`BOM: 알 수 없는 작업장 ${line.workCenterId}`)
@@ -135,7 +145,13 @@ export class SimEngine {
       materials: Object.fromEntries(
         master.materials.map((m) => [
           m.id,
-          { materialId: m.id, onHand: m.initialStock, lots: m.initialStock > 0 ? [`L-${m.id}-000`] : [], orders: [] },
+          {
+            materialId: m.id,
+            onHand: m.initialStock,
+            lots: m.initialStock > 0 ? [`L-${m.id}-000`] : [],
+            orders: [],
+            consumed: 0,
+          },
         ]),
       ),
       records: [],
@@ -146,7 +162,10 @@ export class SimEngine {
       downtimes: [],
       dispatchRule: 'PRIORITY',
       materialLots: lots,
+      purchaseOrders: [],
+      stockHistory: [],
     }
+    this.recordStock()
   }
 
   /** 명령을 큐에 넣는다. 존재하지 않는 대상을 가리키면 즉시 예외를 던진다. */
@@ -210,6 +229,7 @@ export class SimEngine {
     const { released, completed, scrapped } = this.state.counters
     this.state.counters.wipSeconds += (released - completed - scrapped) * dt
     this.state.time += dt
+    if (this.state.time % STOCK_SAMPLE_INTERVAL === 0) this.recordStock()
   }
 
   /** seconds초 동안 1초 단위로 진행한다. */
@@ -368,6 +388,8 @@ export class SimEngine {
         }
         this.state.materialLots[lot.id] = lot
         stock.lots.push(lot.id)
+        po.receivedAt = this.state.time
+        po.lotId = lot.id
         const material = this.materials.get(stock.materialId)!
         this.emit(
           'MATERIAL_RECEIVED',
@@ -691,6 +713,7 @@ export class SimEngine {
       const material = this.materials.get(line.materialId)!
       const before = stock.onHand
       stock.onHand -= line.qtyPer
+      stock.consumed += line.qtyPer
       let need = line.qtyPer
       while (need > 0 && stock.lots.length > 0) {
         const lot = this.state.materialLots[stock.lots[0]]
@@ -703,6 +726,14 @@ export class SimEngine {
       if (before > material.reorderPoint && stock.onHand <= material.reorderPoint) {
         // 발주점 이하는 자동 발주가 나가는 정상 흐름이라 정보로만 남긴다. 실제 위험은 MATERIAL_SHORTAGE.
         this.emit('MATERIAL_LOW', material.id, 'info', `${material.name} 재고 ${stock.onHand}${material.unit} — 발주점 이하`)
+      }
+      if (material.safetyStock > 0 && before > material.safetyStock && stock.onHand <= material.safetyStock) {
+        this.emit(
+          'MATERIAL_BELOW_SAFETY',
+          material.id,
+          'warning',
+          `${material.name} 재고 ${stock.onHand}${material.unit} — 안전재고(${material.safetyStock}) 이하`,
+        )
       }
     }
   }
@@ -719,20 +750,35 @@ export class SimEngine {
 
   private placeOrder(material: Material, qty: number, expedited: boolean): void {
     const leadTime = expedited ? material.expediteLeadTime : material.leadTime
-    this.state.materials[material.id].orders.push({
+    const po: PurchaseOrder = {
       id: `PO-${String(this.nextPurchaseOrderSeq++).padStart(4, '0')}`,
       materialId: material.id,
       qty,
       orderedAt: this.state.time,
       eta: this.state.time + leadTime,
       expedited,
-    })
+      receivedAt: null,
+      lotId: null,
+    }
+    this.state.materials[material.id].orders.push(po)
+    this.state.purchaseOrders.push(po)
     this.emit(
       'MATERIAL_ORDERED',
       material.id,
       expedited ? 'warning' : 'info',
       `${material.name} ${qty}${material.unit} ${expedited ? '긴급 ' : ''}발주 — ${Math.round(leadTime / 60)}분 후 입고`,
     )
+  }
+
+  /** 자재별 재고 · 누적 소비를 기록한다(재고 추이 · 소비 속도 계산용) */
+  private recordStock(): void {
+    const sample: StockSample = { time: this.state.time, onHand: {}, consumed: {} }
+    for (const stock of Object.values(this.state.materials)) {
+      sample.onHand[stock.materialId] = stock.onHand
+      sample.consumed[stock.materialId] = stock.consumed
+    }
+    this.state.stockHistory.push(sample)
+    if (this.state.stockHistory.length > STOCK_HISTORY_SIZE) this.state.stockHistory.shift()
   }
 
   // ── 보조 ────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount } from 'vue'
-import { useLoop, type TresPointerEvent } from '@tresjs/core'
+import { useLoop } from '@tresjs/core'
 import {
   Color,
   CylinderGeometry,
@@ -12,9 +12,8 @@ import {
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { SimEngine } from '@/sim/engine'
-import { useSelectionStore } from '@/stores/selection'
 import { useSimStore } from '@/stores/sim'
-import { DEFAULT_ITEM_COLOR, ITEM_COLOR, SCRAP_COLOR, SELECTED_COLOR } from './colors'
+import { DEFAULT_ITEM_COLOR, ITEM_COLOR, SCRAP_COLOR } from './colors'
 import {
   UNIT_SIZE,
   bufferSlotPosition,
@@ -25,7 +24,6 @@ import {
   warehousePosition,
   type Vec3,
 } from './layout'
-import { hoverCursor } from './pointer'
 
 /**
  * 라인 위 Unit(재공품)들을 InstancedMesh 하나로 그린다.
@@ -35,7 +33,6 @@ const MAX_UNITS = 256
 /** 클수록 목표 위치를 빨리 따라간다(초당 감쇠율) */
 const FOLLOW_RATE = 8
 const ARRIVE_DISTANCE = 0.15
-const SELECTED_SCALE = 1.5
 
 /** 모터 모양: 원통 하우징 + 윗면 축. 크기는 UNIT_SIZE 정육면체 안에 들어간다(버퍼 적재 간격 유지). */
 const housing = new CylinderGeometry(UNIT_SIZE * 0.45, UNIT_SIZE * 0.45, UNIT_SIZE * 0.8, 16).translate(0, -UNIT_SIZE * 0.1, 0)
@@ -58,24 +55,13 @@ interface Visual {
 }
 
 const visuals = new Map<string, Visual>()
-/** 인스턴스 번호 → Unit id. 클릭된 인스턴스가 어떤 Unit인지 찾는 데 쓴다. */
-const instanceUnitIds: string[] = []
 const matrix = new Matrix4()
-const scale = new Vector3()
 const color = new Color()
 const target = new Vector3()
 let lastEngine: SimEngine | null = null
 
 const sim = useSimStore()
-const selection = useSelectionStore()
 const { onBeforeRender } = useLoop()
-
-function onClick(event: TresPointerEvent) {
-  const unitId = event.instanceId === undefined ? undefined : instanceUnitIds[event.instanceId]
-  if (!unitId) return
-  event.stopPropagation()
-  selection.select({ kind: 'unit', id: unitId })
-}
 
 onBeforeRender(({ delta }) => {
   const engine = sim.getEngine()
@@ -110,7 +96,6 @@ onBeforeRender(({ delta }) => {
 
   // 3. 위치 갱신 및 인스턴스 기록
   const alpha = 1 - Math.exp(-FOLLOW_RATE * delta)
-  const selectedUnitId = selection.selected?.kind === 'unit' ? selection.selected.id : null
   let index = 0
   for (const [unitId, visual] of visuals) {
     const goal = targets.get(unitId)
@@ -128,21 +113,15 @@ onBeforeRender(({ delta }) => {
     visual.position.lerp(target, alpha)
     if (index >= MAX_UNITS) continue
 
-    const isSelected = unitId === selectedUnitId
-    scale.setScalar(isSelected ? SELECTED_SCALE : 1)
-    matrix.makeScale(scale.x, scale.y, scale.z).setPosition(visual.position)
+    matrix.makeTranslation(visual.position)
     mesh.setMatrixAt(index, matrix)
-    if (isSelected) color.set(SELECTED_COLOR)
-    else color.set(visual.exit === 'SCRAP' ? SCRAP_COLOR : (ITEM_COLOR[visual.itemId] ?? DEFAULT_ITEM_COLOR))
+    color.set(visual.exit === 'SCRAP' ? SCRAP_COLOR : (ITEM_COLOR[visual.itemId] ?? DEFAULT_ITEM_COLOR))
     mesh.setColorAt(index, color)
-    instanceUnitIds[index] = unitId
     index++
   }
   mesh.count = index
   mesh.instanceMatrix.needsUpdate = true
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-  // 클릭 판정(raycast)은 경계 구를 먼저 검사하므로, Unit이 움직이면 다시 계산해야 한다.
-  mesh.computeBoundingSphere()
 })
 
 onBeforeUnmount(() => {
@@ -153,10 +132,5 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <primitive
-    :object="mesh"
-    @click="onClick"
-    @pointerenter="hoverCursor.enter"
-    @pointerleave="hoverCursor.leave"
-  />
+  <primitive :object="mesh" />
 </template>

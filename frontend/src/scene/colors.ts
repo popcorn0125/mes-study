@@ -24,21 +24,12 @@ export function stockColor(onHand: number, reorderPoint: number, qtyPer = 1): st
   return '#3fb950'
 }
 
-/** 히트맵 색: 0(초록) → 0.5(노랑) → 1(빨강) */
-export function heatColor(ratio: number): string {
-  const t = Math.min(1, Math.max(0, ratio))
-  const hue = 120 * (1 - t)
-  return `hsl(${hue.toFixed(0)}, 60%, 32%)`
-}
-
 export const ITEM_COLOR: Record<string, string> = {
   'MOTOR-A': '#58a6ff',
   'MOTOR-B': '#bc8cff',
 }
 export const DEFAULT_ITEM_COLOR = '#c9d1d9'
 export const SCRAP_COLOR = '#f85149'
-/** 선택된 Unit 강조색 */
-export const SELECTED_COLOR = '#ffffff'
 
 /** 버퍼 점유율 색: 50% 미만 초록, 90% 미만 노랑, 그 이상 빨강 */
 export function bufferFillColor(ratio: number): string {

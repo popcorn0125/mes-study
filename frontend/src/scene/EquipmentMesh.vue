@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue'
-import { useLoop, type TresPointerEvent } from '@tresjs/core'
+import { useLoop } from '@tresjs/core'
 import type { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from 'three'
 import type { EquipmentStatus, SensorLevel } from '@/domain/types'
-import { useSelectionStore } from '@/stores/selection'
 import { useSimStore } from '@/stores/sim'
 import { formatDuration } from '@/ui/format'
 import { EQUIPMENT_STATUS_STYLE, SENSOR_LEVEL_STYLE } from './colors'
@@ -16,9 +15,7 @@ import PackingMachine from './machines/PackingMachine.vue'
 import RobotCell from './machines/RobotCell.vue'
 import WinderMachine from './machines/WinderMachine.vue'
 import FactoryWorker from './people/FactoryWorker.vue'
-import { hoverCursor } from './pointer'
 import SceneLabel from './SceneLabel.vue'
-import SelectionRing from './SelectionRing.vue'
 
 const props = defineProps<{
   id: string
@@ -27,14 +24,6 @@ const props = defineProps<{
 }>()
 
 const sim = useSimStore()
-const selection = useSelectionStore()
-const selected = computed(() => selection.isSelected('equipment', props.id))
-
-function onClick(event: TresPointerEvent) {
-  event.stopPropagation()
-  selection.select({ kind: 'equipment', id: props.id })
-}
-
 const MODELS: Record<MachineKind, unknown> = {
   cnc: CncMachine,
   winder: WinderMachine,
@@ -136,10 +125,6 @@ function setLampMaterial(index: number, material: unknown) {
 
 /** 설비 그룹의 원점은 설비 상자 중심이므로, 모델·사람은 바닥(y = -높이/2) 기준으로 놓는다. */
 const floorY = -EQUIPMENT_SIZE[1] / 2
-const HITBOXES: { position: Vec3; size: Vec3 }[] = [
-  { position: [0, floorY + 0.5, 0], size: [1.5, 1.0, 1.3] },
-  { position: [0, floorY + 1.55, -0.43], size: [1.5, 1.1, 0.45] },
-]
 </script>
 
 <template>
@@ -193,10 +178,6 @@ const HITBOXES: { position: Vec3; size: Vec3 }[] = [
         :position="[1.05, 0, 0.6]"
         :rotation-y="-Math.PI / 2"
       />
-      <SelectionRing
-        v-if="selected"
-        :radius="1.05"
-      />
       <TresMesh
         ref="alarmRing"
         :rotation="[-Math.PI / 2, 0, 0]"
@@ -211,23 +192,6 @@ const HITBOXES: { position: Vec3; size: Vec3 }[] = [
         />
       </TresMesh>
     </TresGroup>
-    <!-- 클릭 판정용 투명 상자. 작업대 위 가운데(가공 중인 작업물 자리)는 비워 작업물을 따로 클릭할 수 있게 한다. -->
-    <TresMesh
-      v-for="(box, i) in HITBOXES"
-      :key="i"
-      :position="box.position"
-      @click="onClick"
-      @pointerenter="hoverCursor.enter"
-      @pointerleave="hoverCursor.leave"
-    >
-      <TresBoxGeometry :args="box.size" />
-      <TresMeshBasicMaterial
-        transparent
-        :opacity="0"
-        :depth-write="false"
-        :color-write="false"
-      />
-    </TresMesh>
     <SceneLabel :position="[0, 2.35, 0]">
       <div
         v-if="label"

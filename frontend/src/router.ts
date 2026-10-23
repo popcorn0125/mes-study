@@ -55,11 +55,11 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '실적 리포트', icon: '📈' },
   },
   {
-    path: '/training',
-    name: 'training',
-    // 3D 장면(three.js)이 커서 교육 모드에 들어올 때만 불러온다
-    component: () => import('./views/TrainingView.vue'),
-    meta: { title: '교육 모드', icon: '🎓', fullscreen: true },
+    path: '/simulator',
+    name: 'simulator',
+    // 3D 장면(three.js)이 커서 자동 시뮬레이션 화면에 들어올 때만 불러온다
+    component: () => import('./views/SimulatorView.vue'),
+    meta: { title: '자동 시뮬레이션', icon: '🏭', fullscreen: true },
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]

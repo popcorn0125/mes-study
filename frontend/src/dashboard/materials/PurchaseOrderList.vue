@@ -6,7 +6,7 @@ import { clock } from './display'
 
 /**
  * 발주 현황: 발주 대장(최신순). 입고 대기는 남은 시간, 입고 완료는 입고 시각과 만든 로트.
- * 아래 긴급 발주 폼은 교육 모드 자재 상세와 같은 명령(EXPEDITE_MATERIAL)을 보낸다.
+ * 아래 긴급 발주 폼은 엔진에 긴급 발주 명령(EXPEDITE_MATERIAL)을 보낸다.
  */
 const props = defineProps<{ materialId: string }>()
 const sim = useSimStore()

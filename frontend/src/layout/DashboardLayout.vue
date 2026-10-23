@@ -3,7 +3,6 @@ import { computed, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { routes } from '@/router'
 import { SPEED_OPTIONS, formatSimTime } from '@/sim/clock'
-import { useScenarioStore } from '@/stores/scenario'
 import { useSimStore } from '@/stores/sim'
 
 /**
@@ -12,13 +11,12 @@ import { useSimStore } from '@/stores/sim'
  */
 const route = useRoute()
 const sim = useSimStore()
-const scenario = useScenarioStore()
 
 const menu = routes.filter((r) => r.name && !r.meta?.fullscreen)
-const training = routes.find((r) => r.name === 'training')!
+const simulator = routes.find((r) => r.name === 'simulator')!
 const clock = computed(() => formatSimTime(sim.state.time))
 
-onMounted(() => scenario.enterDashboard())
+onMounted(() => sim.play())
 </script>
 
 <template>
@@ -45,11 +43,11 @@ onMounted(() => scenario.enterDashboard())
         </RouterLink>
       </nav>
       <RouterLink
-        :to="training.path"
-        class="dash-nav__link dash-nav__link--training"
+        :to="simulator.path"
+        class="dash-nav__link dash-nav__link--simulator"
       >
-        <span aria-hidden="true">{{ training.meta!.icon }}</span>
-        {{ training.meta!.title }}
+        <span aria-hidden="true">{{ simulator.meta!.icon }}</span>
+        {{ simulator.meta!.title }}
       </RouterLink>
     </aside>
 

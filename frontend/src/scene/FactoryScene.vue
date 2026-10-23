@@ -1,16 +1,10 @@
 <script setup lang="ts">
-import { computed, provide, shallowRef, watch } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
-import { workCenterUtilization } from '@/domain/kpi'
-import { useScenarioStore } from '@/stores/scenario'
-import { useSelectionStore } from '@/stores/selection'
 import { useSimStore } from '@/stores/sim'
-import { useViewStore } from '@/stores/view'
 import { createNameLookup } from '@/ui/format'
 import BufferShelf from './BufferShelf.vue'
-import { SCENE_EMBEDDED } from './embedded'
-import { heatColor } from './colors'
 import MaterialRack from './MaterialRack.vue'
 import EquipmentMesh from './EquipmentMesh.vue'
 import UnitMovers from './UnitMovers.vue'
@@ -24,7 +18,6 @@ import {
   warehousePosition,
   workCenterX,
 } from './layout'
-import { hoverCursor } from './pointer'
 import AgvCart from './props/AgvCart.vue'
 import ConveyorBelt from './props/ConveyorBelt.vue'
 import FactoryFloor from './props/FactoryFloor.vue'
@@ -32,25 +25,13 @@ import ScrapBin from './props/ScrapBin.vue'
 import ShippingDock from './props/ShippingDock.vue'
 import SceneLabel from './SceneLabel.vue'
 
-/**
- * embedded: 대시보드 위젯 안에 넣을 때. 창 전체가 아니라 부모 크기에 맞춰 그리고,
- * 라인 전체가 보이는 정면 시점을 쓰며, 자동 회전과 3D 라벨을 끈다.
- */
-const props = defineProps<{ embedded?: boolean }>()
-provide(SCENE_EMBEDDED, props.embedded)
-
 const sim = useSimStore()
-const selection = useSelectionStore()
-const view = useViewStore()
-const scenario = useScenarioStore()
 
 const ZONE_COLOR = '#1b232d'
 
 // ── 카메라 ────────────────────────────────────────────────
-// 왼쪽 패널(작업지시·이벤트 로그)을 피해 라인이 화면 오른쪽 영역에 오도록 시점 중심을 왼쪽으로 옮긴다.
-// 위젯(embedded)은 가리는 패널이 없으므로 라인 가운데를 본다.
-const CAMERA_TARGET: [number, number, number] = props.embedded ? [0, 0, 0] : [-6, 0, 0]
-const CAMERA_POSITION: [number, number, number] = props.embedded ? [0, 15, 21] : [-6, 18, 26]
+const CAMERA_TARGET: [number, number, number] = [0, 0, 0]
+const CAMERA_POSITION: [number, number, number] = [0, 18, 26]
 /** 이동(팬)으로 시점 중심이 공장 밖으로 나가지 않게 하는 범위 */
 const TARGET_BOUNDS = { minX: -22, maxX: 18, minZ: -8, maxZ: 8 }
 
@@ -97,36 +78,13 @@ function clampTarget() {
   p.set(p.x + dx, p.y + dy, p.z + dz)
 }
 
-function resetCamera() {
-  const instance = controls.value?.instance
-  if (!instance) return
-  instance.target.set(...CAMERA_TARGET)
-  instance.object.position.set(...CAMERA_POSITION)
-  instance.update()
-}
-
-// 하단 "시점 초기화" 버튼, 그리고 랜딩(자동 회전)에서 빠져나올 때 처음 시점으로 되돌린다.
-watch(() => view.cameraResetRequest, resetCamera)
-watch(
-  () => scenario.phase,
-  (phase, prev) => {
-    if (prev === 'landing' && phase !== 'landing') resetCamera()
-  },
-)
-
 const workCenters = computed(() => {
   const list = sim.master.workCenters
-  return list.map((wc, i) => {
-    // 히트맵: 작업장 평균 가동률로 바닥을 칠한다
-    const utilization = workCenterUtilization(sim.state, wc.id)
-    return {
-      ...wc,
-      x: workCenterX(i, list.length),
-      shelf: shelfPosition(i, list.length),
-      floorColor: view.heatmap ? heatColor(utilization) : ZONE_COLOR,
-      utilization: `${Math.round(utilization * 100)}%`,
-    }
-  })
+  return list.map((wc, i) => ({
+    ...wc,
+    x: workCenterX(i, list.length),
+    shelf: shelfPosition(i, list.length),
+  }))
 })
 
 // 설비 목록은 실행 데이터 기준(사용자가 설비를 추가하면 늘어난다)
@@ -160,8 +118,7 @@ const agvStops = computed(() => {
 <template>
   <TresCanvas
     clear-color="#0b0f14"
-    :window-size="!embedded"
-    @pointermissed="selection.clear()"
+    window-size
   >
     <TresPerspectiveCamera
       :position="CAMERA_POSITION"
@@ -173,8 +130,6 @@ const agvStops = computed(() => {
       ref="controls"
       make-default
       :target="CAMERA_TARGET"
-      :auto-rotate="!embedded && scenario.phase === 'landing'"
-      :auto-rotate-speed="0.6"
       enable-damping
       :damping-factor="0.12"
       :zoom-speed="1.2"
@@ -220,16 +175,13 @@ const agvStops = computed(() => {
       <TresMesh
         :rotation="[-Math.PI / 2, 0, 0]"
         :position="[wc.x - 0.6, 0.003, 0]"
-        @click="selection.select({ kind: 'workCenter', id: wc.id })"
-        @pointerenter="hoverCursor.enter"
-        @pointerleave="hoverCursor.leave"
       >
         <TresPlaneGeometry :args="[4.4, 5]" />
-        <TresMeshStandardMaterial :color="wc.floorColor" />
+        <TresMeshStandardMaterial :color="ZONE_COLOR" />
       </TresMesh>
       <SceneLabel :position="[wc.x - 0.6, 0, 2.9]">
         <div class="scene-label scene-label--zone">
-          {{ wc.name }}<span v-if="view.heatmap"> · 가동률 {{ wc.utilization }}</span>
+          {{ wc.name }}
         </div>
       </SceneLabel>
       <BufferShelf

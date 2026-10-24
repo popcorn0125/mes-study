@@ -7,7 +7,7 @@ import { useEquipmentFrame } from '../machines/useEquipmentFrame'
 /**
  * 설비 곁의 사람. 담당 설비 상태를 따라 움직인다.
  * - operator(작업자)·inspector(검사원): 설비가 가동 중이면 손을 움직여 작업하고, 아니면 가만히 서 있다.
- * - technician(정비사): 설비가 고장·예방정비 중일 때만 나타나 공구질을 한다.
+ * - technician(정비사): 설비가 고장 중일 때만 나타나 공구질을 한다.
  * 모델 앞쪽은 +z다. 설비를 바라보도록 rotationY로 돌려 놓는다.
  */
 const props = defineProps<{
@@ -33,12 +33,11 @@ let phase = Math.random() * 10
 
 useEquipmentFrame(props.equipmentId, (eq, { dt, elapsed }) => {
   if (!root.value || !leftArm.value || !rightArm.value || !torso.value) return
-  const repairing = eq.status === 'DOWN' || eq.status === 'PM'
+  const repairing = eq.status === 'DOWN'
 
   if (props.role === 'technician') {
     root.value.visible = repairing
     if (!repairing) return
-    // 정지 중에도 수리는 계속되는 것처럼 보이도록 실제 시간으로 움직인다
     torso.value.rotation.x = 0.35
     rightArm.value.rotation.x = -1.3 + 0.45 * Math.sin(elapsed * 9)
     leftArm.value.rotation.x = -0.9

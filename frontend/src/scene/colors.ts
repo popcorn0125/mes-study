@@ -24,13 +24,6 @@ export function stockColor(onHand: number, reorderPoint: number, qtyPer = 1): st
   return '#3fb950'
 }
 
-export const ITEM_COLOR: Record<string, string> = {
-  'MOTOR-A': '#58a6ff',
-  'MOTOR-B': '#bc8cff',
-}
-export const DEFAULT_ITEM_COLOR = '#c9d1d9'
-export const SCRAP_COLOR = '#f85149'
-
 /** 버퍼 점유율 색: 50% 미만 초록, 90% 미만 노랑, 그 이상 빨강 */
 export function bufferFillColor(ratio: number): string {
   if (ratio < 0.5) return '#3fb950'

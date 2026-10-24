@@ -1,35 +1,35 @@
 <script setup lang="ts">
 import { shallowRef } from 'vue'
 import type { Mesh, MeshStandardMaterial } from 'three'
-import { useSimStore } from '@/stores/sim'
 import { MACHINE_COLOR } from './kinds'
 import MachineBase from './MachineBase.vue'
 import { useEquipmentFrame } from './useEquipmentFrame'
 
 /**
  * 검사 스테이션: 비전 카메라 아래로 스캔 빔이 지나가며 작업물을 검사한다.
- * 작업물이 검사를 마치고 나가면 실제 판정 결과(양품/불량)에 따라 OK(초록)·NG(빨강) 램프가 켜진다.
+ * 생산 수량이 늘면 그 판정 결과(양품/불량)에 따라 OK(초록)·NG(빨강) 램프가 켜진다.
  */
 const props = defineProps<{ equipmentId: string }>()
 
-const sim = useSimStore()
 const beam = shallowRef<Mesh>()
 const okLamp = shallowRef<MeshStandardMaterial>()
 const ngLamp = shallowRef<MeshStandardMaterial>()
 
 const RESULT_LAMP_SECONDS = 1.2
 let phase = 0
-let lastUnitId: string | null = null
+let lastTotal: number | null = null
 let lamp: { result: 'GOOD' | 'DEFECT'; until: number } | null = null
 
+let lastBad = 0
+
 useEquipmentFrame(props.equipmentId, (eq, { dt, elapsed }) => {
-  // 검사하던 작업물이 바뀌면, 방금 나간 작업물의 이 설비 판정 결과를 램프로 보여 준다
-  if (eq.unitId !== lastUnitId) {
-    const finished = lastUnitId ? sim.getEngine().state.units[lastUnitId] : undefined
-    const record = finished && [...finished.history].reverse().find((h) => h.equipmentId === props.equipmentId)
-    if (record) lamp = { result: record.result, until: elapsed + RESULT_LAMP_SECONDS }
-    lastUnitId = eq.unitId
+  // 검사 수량이 늘면, 불량 수량이 함께 늘었는지로 방금 나간 작업물의 판정 결과를 램프로 보여 준다
+  const { totalCount, badCount } = eq.production
+  if (lastTotal !== null && totalCount > lastTotal) {
+    lamp = { result: badCount > lastBad ? 'DEFECT' : 'GOOD', until: elapsed + RESULT_LAMP_SECONDS }
   }
+  lastTotal = totalCount
+  lastBad = badCount
   const showing = lamp && elapsed < lamp.until ? lamp.result : null
   if (okLamp.value) okLamp.value.emissiveIntensity = showing === 'GOOD' ? 2.5 : 0.05
   if (ngLamp.value) ngLamp.value.emissiveIntensity = showing === 'DEFECT' ? 2.5 : 0.05

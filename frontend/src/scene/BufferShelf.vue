@@ -1,26 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useSimStore } from '@/stores/sim'
 import { bufferFillColor } from './colors'
 import { shelfHeight, type Vec3 } from './layout'
-import SceneLabel from './SceneLabel.vue'
 
+/** 작업장 입력 버퍼 선반(정적 표시: 빈 선반) */
 const props = defineProps<{
-  workCenterId: string
   capacity: number
   position: Vec3
 }>()
 
-const sim = useSimStore()
-
-const count = computed(() => sim.state.buffers[props.workCenterId]?.length ?? 0)
-const fillColor = computed(() => bufferFillColor(count.value / props.capacity))
+const fillColor = bufferFillColor(0)
 const postHeight = shelfHeight(props.capacity) + 0.35
 </script>
 
 <template>
   <TresGroup :position="position">
-    <!-- 점유율에 따라 색이 바뀌는 받침판 -->
+    <!-- 받침판 -->
     <TresMesh :position="[0, 0.15, 0]">
       <TresBoxGeometry :args="[1.05, 0.3, 0.7]" />
       <TresMeshStandardMaterial :color="fillColor" />
@@ -34,10 +28,5 @@ const postHeight = shelfHeight(props.capacity) + 0.35
       <TresBoxGeometry :args="[0.05, postHeight, 0.05]" />
       <TresMeshStandardMaterial color="#484f58" />
     </TresMesh>
-    <SceneLabel :position="[0, -0.05, 0.75]">
-      <div class="scene-label scene-label--small">
-        대기 {{ count }}/{{ capacity }}
-      </div>
-    </SceneLabel>
   </TresGroup>
 </template>

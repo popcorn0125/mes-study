@@ -2,10 +2,9 @@
 import { computed, onBeforeUnmount } from 'vue'
 import { useLoop } from '@tresjs/core'
 import { CanvasTexture, RepeatWrapping, SRGBColorSpace } from 'three'
-import { useSimStore } from '@/stores/sim'
 import { CONVEYOR_TOP_Y } from '../layout'
 
-/** 벨트 컨베이어 한 구간(x: from → to, z = 0). 시뮬레이션이 진행 중이면 벨트 무늬가 흐른다. */
+/** 벨트 컨베이어 한 구간(x: from → to, z = 0). 벨트 무늬가 계속 흐른다. */
 const props = defineProps<{ from: number; to: number }>()
 
 const WIDTH = 0.5
@@ -36,10 +35,9 @@ texture.wrapS = RepeatWrapping
 texture.colorSpace = SRGBColorSpace
 texture.repeat.set(length.value / PATTERN_LENGTH, 1)
 
-const sim = useSimStore()
 const { onBeforeRender } = useLoop()
 onBeforeRender(({ delta }) => {
-  if (sim.playing) texture.offset.x -= (delta * BELT_SPEED) / PATTERN_LENGTH
+  texture.offset.x -= (delta * BELT_SPEED) / PATTERN_LENGTH
 })
 
 onBeforeUnmount(() => texture.dispose())

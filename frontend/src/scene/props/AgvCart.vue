@@ -2,12 +2,11 @@
 import { computed, shallowRef } from 'vue'
 import { useLoop } from '@tresjs/core'
 import type { Group, MeshStandardMaterial } from 'three'
-import { useSimStore } from '@/stores/sim'
 import { AISLE_Z } from '../layout'
 
 /**
  * 자재 운반 AGV: 앞쪽 통로를 따라 자재 창고에서 출발해 자재를 쓰는 공정 앞에 차례로 들렀다가 돌아온다.
- * 분위기 연출용이며 엔진의 자재 재고와는 연결되어 있지 않다. 시뮬레이션이 멈추면 AGV도 멈춘다.
+ * 분위기 연출용이며 자재 재고와는 연결되어 있지 않다.
  */
 const props = defineProps<{ startX: number; stopXs: number[] }>()
 
@@ -26,11 +25,10 @@ const root = shallowRef<Group>()
 const beacon = shallowRef<MeshStandardMaterial>()
 let t = 0
 
-const sim = useSimStore()
 const { onBeforeRender } = useLoop()
 onBeforeRender(({ delta, elapsed }) => {
   if (!root.value) return
-  if (sim.playing) t = (t + delta) % cycle.value
+  t = (t + delta) % cycle.value
   let rest = t
   for (const leg of legs.value) {
     const travel = Math.abs(leg.to - leg.from) / SPEED
@@ -47,7 +45,7 @@ onBeforeRender(({ delta, elapsed }) => {
     rest -= leg.dwell
   }
   // 움직이는 동안 경광등이 깜박인다
-  if (beacon.value) beacon.value.emissiveIntensity = sim.playing ? 0.6 + 1.4 * Math.abs(Math.sin(elapsed * 6)) : 0.2
+  if (beacon.value) beacon.value.emissiveIntensity = 0.6 + 1.4 * Math.abs(Math.sin(elapsed * 6))
 })
 </script>
 

@@ -2,16 +2,15 @@
 import { computed, shallowRef, watch } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
-import { useSimStore } from '@/stores/sim'
-import { createNameLookup } from '@/ui/format'
+import { BUFFER_CAPACITY, PRODUCER_EQUIPMENT } from '@/producer/equipment'
+import { findLog, useSensorLogs } from '@/producer/useSensorProducer'
 import BufferShelf from './BufferShelf.vue'
 import MaterialRack from './MaterialRack.vue'
 import EquipmentMesh from './EquipmentMesh.vue'
-import UnitMovers from './UnitMovers.vue'
 import {
   WORK_CENTER_SPACING,
   conveyorSegments,
-  equipmentPositions,
+  equipmentPosition,
   scrapPosition,
   shelfPosition,
   shippingPosition,
@@ -25,7 +24,7 @@ import ScrapBin from './props/ScrapBin.vue'
 import ShippingDock from './props/ShippingDock.vue'
 import SceneLabel from './SceneLabel.vue'
 
-const sim = useSimStore()
+const logs = useSensorLogs()
 
 const ZONE_COLOR = '#1b232d'
 
@@ -78,41 +77,26 @@ function clampTarget() {
   p.set(p.x + dx, p.y + dy, p.z + dz)
 }
 
-const workCenters = computed(() => {
-  const list = sim.master.workCenters
-  return list.map((wc, i) => ({
-    ...wc,
-    x: workCenterX(i, list.length),
-    shelf: shelfPosition(i, list.length),
-  }))
-})
+// 설비 1대가 작업장 하나를 맡는다(라인 순서)
+const wcCount = PRODUCER_EQUIPMENT.length
+const stations = PRODUCER_EQUIPMENT.map((eq, i) => ({
+  ...eq,
+  x: workCenterX(i, wcCount),
+  shelf: shelfPosition(i, wcCount),
+  position: equipmentPosition(i, wcCount, 0, 1),
+}))
 
-// 설비 목록은 실행 데이터 기준(사용자가 설비를 추가하면 늘어난다)
-const equipment = computed(() => {
-  const positions = equipmentPositions(
-    sim.master.workCenters.map((wc) => wc.id),
-    sim.state.equipment,
-  )
-  const names = createNameLookup(sim.master)
-  return sim.state.equipment.map((eq) => ({
-    id: eq.id,
-    name: names.equipment(eq.id),
-    position: positions.get(eq.id)!,
-  }))
-})
-
-const wcCount = computed(() => sim.master.workCenters.length)
-const warehouse = computed(() => warehousePosition(wcCount.value))
-const shipping = computed(() => shippingPosition(wcCount.value))
+const warehouse = warehousePosition(wcCount)
+const shipping = shippingPosition(wcCount)
 const scrap = scrapPosition()
-const lineLength = computed(() => (wcCount.value + 1) * WORK_CENTER_SPACING)
-const conveyors = computed(() => conveyorSegments(wcCount.value))
-// AGV는 BOM 자재를 쓰는 작업장의 버퍼 앞에 들른다
-const agvStops = computed(() => {
-  const ids = sim.master.workCenters.map((wc) => wc.id)
-  const consuming = new Set(sim.master.bom.map((line) => line.workCenterId))
-  return ids.flatMap((id, i) => (consuming.has(id) ? [shelfPosition(i, ids.length)[0]] : []))
-})
+const lineLength = (wcCount + 1) * WORK_CENTER_SPACING
+const conveyors = conveyorSegments(wcCount)
+// AGV는 자재를 쓰는 작업장의 버퍼 앞에 들른다
+const agvStops = stations.filter((s) => s.usesMaterials).map((s) => s.shelf[0])
+
+// 출하장 = 마지막 공정(포장)의 양품, 폐기함 = 모든 설비의 불량 합계
+const shipped = computed(() => findLog(logs.value, PRODUCER_EQUIPMENT[wcCount - 1].id)?.production.goodCount ?? 0)
+const scrapped = computed(() => logs.value.reduce((sum, log) => sum + log.production.badCount, 0))
 </script>
 
 <template>
@@ -169,7 +153,7 @@ const agvStops = computed(() => {
 
     <!-- 작업장 구역 -->
     <TresGroup
-      v-for="wc in workCenters"
+      v-for="wc in stations"
       :key="wc.id"
     >
       <TresMesh
@@ -181,21 +165,21 @@ const agvStops = computed(() => {
       </TresMesh>
       <SceneLabel :position="[wc.x - 0.6, 0, 2.9]">
         <div class="scene-label scene-label--zone">
-          {{ wc.name }}
+          {{ wc.workCenterName }}
         </div>
       </SceneLabel>
       <BufferShelf
-        :work-center-id="wc.id"
-        :capacity="wc.inBufferCap"
+        :capacity="BUFFER_CAPACITY"
         :position="wc.shelf"
       />
     </TresGroup>
 
     <EquipmentMesh
-      v-for="eq in equipment"
+      v-for="eq in stations"
       :id="eq.id"
       :key="eq.id"
       :name="eq.name"
+      :kind="eq.kind"
       :position="eq.position"
     />
 
@@ -209,21 +193,19 @@ const agvStops = computed(() => {
 
     <ShippingDock
       :position="shipping"
-      :completed="sim.state.counters.completed"
+      :completed="shipped"
     />
     <SceneLabel :position="[shipping[0], 0, 1.4]">
       <div class="scene-label scene-label--zone">
-        출하장 · 양품 {{ sim.state.counters.completed }}
+        출하장 · 양품 {{ shipped }}
       </div>
     </SceneLabel>
 
     <ScrapBin :position="scrap" />
     <SceneLabel :position="[scrap[0], 0, scrap[2] + 1]">
       <div class="scene-label scene-label--zone">
-        폐기함 · 불량 {{ sim.state.counters.scrapped }}
+        폐기함 · 불량 {{ scrapped }}
       </div>
     </SceneLabel>
-
-    <UnitMovers />
   </TresCanvas>
 </template>

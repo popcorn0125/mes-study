@@ -15,7 +15,6 @@ const PUBLISH_INTERVAL_MS = 250
  * 엔진은 자유 체험 공장(기본 공장) 하나뿐이다.
  * - `master`: 엔진의 기준정보.
  * - `state`: UI 패널용. shallowRef라 Vue가 깊은 객체를 추적하지 않고, 갱신은 PUBLISH_INTERVAL_MS 주기로만 알린다.
- * - `getEngine()`: 3D 장면용. 매 프레임 엔진 상태를 반응성 없이 직접 읽는다.
  */
 export const useSimStore = defineStore('sim', () => {
   const engine: SimEngine = createScenarioEngine(freeScenario)
@@ -87,10 +86,6 @@ export const useSimStore = defineStore('sim', () => {
     return null
   }
 
-  function getEngine(): SimEngine {
-    return engine
-  }
-
   return {
     master,
     state,
@@ -101,6 +96,5 @@ export const useSimStore = defineStore('sim', () => {
     toggle,
     setSpeed,
     dispatch,
-    getEngine,
   }
 })

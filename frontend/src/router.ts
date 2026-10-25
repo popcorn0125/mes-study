@@ -1,6 +1,10 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import EquipmentView from './views/EquipmentView.vue'
+import MaterialView from './views/MaterialView.vue'
 import ProductionView from './views/ProductionView.vue'
+import QualityView from './views/QualityView.vue'
+import ReportView from './views/ReportView.vue'
+import WorkOrderView from './views/WorkOrderView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -26,8 +30,7 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/work-orders',
     name: 'work-orders',
-    // 간트 차트(echarts custom)를 쓰므로 페이지를 열 때 불러온다
-    component: () => import('./views/WorkOrderView.vue'),
+    component: WorkOrderView,
     meta: { title: '작업지시 관리', icon: '📋' },
   },
   {
@@ -39,19 +42,19 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/quality',
     name: 'quality',
-    component: () => import('./views/QualityView.vue'),
+    component: QualityView,
     meta: { title: '품질 관리', icon: '✅' },
   },
   {
     path: '/materials',
     name: 'materials',
-    component: () => import('./views/MaterialView.vue'),
+    component: MaterialView,
     meta: { title: '자재 / 재고', icon: '📦' },
   },
   {
     path: '/reports',
     name: 'reports',
-    component: () => import('./views/ReportView.vue'),
+    component: ReportView,
     meta: { title: '실적 리포트', icon: '📈' },
   },
   {

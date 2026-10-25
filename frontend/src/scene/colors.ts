@@ -1,15 +1,4 @@
-import type { EquipmentStatus, SensorLevel } from '@/domain/types'
-
-/** 설비 상태 색과 표시 이름. 색만으로 구분하지 않도록 라벨에도 이름을 함께 쓴다. */
-export const EQUIPMENT_STATUS_STYLE: Record<EquipmentStatus, { color: string; label: string }> = {
-  RUN: { color: '#3fb950', label: '가동' },
-  IDLE: { color: '#6e7681', label: '유휴' },
-  STARVED: { color: '#d29922', label: '대기(공급 없음)' },
-  BLOCKED: { color: '#db6d28', label: '막힘(후공정 가득)' },
-  STARVED_MATERIAL: { color: '#db61a2', label: '자재 부족' },
-  DOWN: { color: '#f85149', label: '고장' },
-  PM: { color: '#2f81f7', label: '예방정비' },
-}
+type SensorLevel = 'NORMAL' | 'WARNING' | 'CRITICAL'
 
 export const SENSOR_LEVEL_STYLE: Record<SensorLevel, { color: string; label: string }> = {
   NORMAL: { color: '#3fb950', label: '정상' },

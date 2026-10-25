@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createRng } from '@/sim/rng'
+import { createRng } from './rng'
 import { PRODUCER_EQUIPMENT, type ProducerEquipment } from './equipment'
 import { driftIn, initialState, step, toLog, type EquipmentState, type Random } from './generate'
 

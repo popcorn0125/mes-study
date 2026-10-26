@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.messtudy.backend.mapper.ProductionQueryMapper">
+
+    <!-- 작업지시 · 장비 순으로 전체 실적. 별칭은 큰따옴표로 감싸 Map 키를 camelCase로 둔다 -->
+    <select id="findAll" resultType="map">
+        SELECT
+            work_order_id   AS "workOrderId",
+            equipment_id    AS "equipmentId",
+            total_count     AS "totalCount",
+            good_count      AS "goodCount",
+            bad_count       AS "badCount",
+            last_updated_at AS "lastUpdatedAt"
+        FROM production_performance
+        ORDER BY work_order_id, equipment_id
+    </select>
+
+</mapper>

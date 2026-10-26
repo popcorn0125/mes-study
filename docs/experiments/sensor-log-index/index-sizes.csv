@@ -1,0 +1,11 @@
+dataset,stage,index_name,bytes
+A,2,sensor_log_a_equipment_idx,21258240
+A,3,sensor_log_a_time_idx,35291136
+A,4,sensor_log_a_equipment_time_idx,117342208
+A,5,sensor_log_a_time_idx,35291136
+A,5,sensor_log_a_equipment_time_idx,117342208
+B,2,sensor_log_b_equipment_idx,21012480
+B,3,sensor_log_b_time_idx,21643264
+B,4,sensor_log_b_equipment_time_idx,95412224
+B,5,sensor_log_b_time_idx,21643264
+B,5,sensor_log_b_equipment_time_idx,95412224

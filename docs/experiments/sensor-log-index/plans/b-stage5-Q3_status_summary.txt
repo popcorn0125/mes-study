@@ -1,0 +1,24 @@
+Finalize GroupAggregate  (cost=6847.56..6874.06 rows=200 width=18) (actual time=14.096..14.591 rows=171 loops=1)
+  Group Key: equipment_id, status
+  Buffers: shared hit=5587
+  ->  Gather Merge  (cost=6847.56..6870.56 rows=200 width=18) (actual time=14.094..14.563 rows=340 loops=1)
+        Workers Planned: 1
+        Workers Launched: 1
+        Buffers: shared hit=5587
+        ->  Sort  (cost=5847.55..5848.05 rows=200 width=18) (actual time=13.442..13.446 rows=170 loops=2)
+              Sort Key: equipment_id, status
+              Sort Method: quicksort  Memory: 31kB
+              Buffers: shared hit=5587
+              Worker 0:  Sort Method: quicksort  Memory: 31kB
+              ->  Partial HashAggregate  (cost=5837.90..5839.90 rows=200 width=18) (actual time=13.399..13.409 rows=170 loops=2)
+                    Group Key: equipment_id, status
+                    Batches: 1  Memory Usage: 48kB
+                    Buffers: shared hit=5579
+                    Worker 0:  Batches: 1  Memory Usage: 48kB
+                    ->  Parallel Index Scan using sensor_log_b_time_idx on sensor_log_b  (cost=0.43..5028.53 rows=107916 width=10) (actual time=0.004..4.497 rows=90025 loops=2)
+                          Index Cond: (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '01:00:00'::interval))
+                          Buffers: shared hit=5579
+Planning:
+  Buffers: shared hit=2
+Planning Time: 0.034 ms
+Execution Time: 14.602 ms

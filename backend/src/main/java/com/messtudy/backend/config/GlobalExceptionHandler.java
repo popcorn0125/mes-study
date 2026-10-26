@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import com.messtudy.backend.service.InvalidPayloadException;
 
@@ -14,7 +15,7 @@ import com.messtudy.backend.service.InvalidPayloadException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    /** 필수 값 누락 · 형식 오류 */
+    /** 필수 값 누락 · 형식 오류, 조회 기간(minutes) 범위 밖 */
     @ExceptionHandler(InvalidPayloadException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handleInvalidPayload(InvalidPayloadException e) {
@@ -26,5 +27,12 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handleDataIntegrity(DataIntegrityViolationException e) {
         return Map.of("message", "저장할 수 없는 값이 있습니다(길이 · 범위 초과)");
+    }
+
+    /** 쿼리 파라미터 형식 오류(예: minutes=abc) */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        return Map.of("message", e.getName() + ": 형식이 맞지 않습니다(" + e.getValue() + ")");
     }
 }

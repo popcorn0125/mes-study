@@ -140,7 +140,7 @@ backend/
 9. **응답** → 200과 저장 건수 `{"sensorLogs":n,"productions":m}`.
 10. **누적 수량 역전 방지** → 넣는다. 누적 수량은 줄어들 수 없으므로, 늦게 도착한 옛날 요청이 더 최신 값을 작은 값으로 덮어쓰지 않게 UPSERT에 `WHERE production_performance.total_count <= EXCLUDED.total_count` 조건을 붙인다. 조건에 걸린 행은 갱신하지 않고 넘어간다(오류 아님).
 11. **설정 파일 형식** → `application.properties`(yml은 쓰지 않는다. 두 형식을 섞지 않는다).
-12. **DB 계정** → username은 `postgres`, password는 파일에 적지 않고 환경 변수 `DB_PASSWORD`로 받는다(`${DB_PASSWORD:postgres}`). 실제 비밀번호가 커밋되지 않게 하려는 것이다(구현 중 변경: 처음에는 사용자가 파일을 직접 고치기로 했다).
+12. **DB 계정** → username은 `postgres`. 실제 비밀번호는 로컬 `application.properties`에만 적고, 이 파일은 `.gitignore`로 커밋하지 않는다. 저장소에는 비밀번호 자리를 비운 `application.properties.example`을 올린다. 테스트 설정은 URL만 바꾸고 계정은 그대로 물려받는다(구현 중 변경: 사용자가 파일을 직접 고치기 → 환경 변수 `DB_PASSWORD` → 예시 파일 + gitignore 순으로 바뀌었다).
 
 ## 10. 구현 순서
 

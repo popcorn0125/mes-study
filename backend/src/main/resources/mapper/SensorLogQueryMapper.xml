@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.messtudy.backend.mapper.SensorLogQueryMapper">
+
+    <!-- 별칭을 큰따옴표로 감싸야 PostgreSQL이 소문자로 바꾸지 않아 Map 키가 camelCase로 나온다 -->
+
+    <!-- 장비마다 최신 1건: 장비 목록을 돌며 장비별로 recorded_at 역순 1행만 읽는다(LATERAL).
+         최종 형태는 인덱스 실험(계획서 7절)에서 DISTINCT ON과 비교해 정한다. -->
+    <select id="findLatestPerEquipment" resultType="map">
+        SELECT
+            l.equipment_id AS "equipmentId",
+            l.recorded_at  AS "recordedAt",
+            l.status       AS "status",
+            l.temperature  AS "temperature",
+            l.vibration    AS "vibration"
+        FROM (SELECT DISTINCT equipment_id FROM production_performance) e
+        CROSS JOIN LATERAL (
+            SELECT s.equipment_id, s.recorded_at, s.status, s.temperature, s.vibration
+            FROM equipment_sensor_log s
+            WHERE s.equipment_id = e.equipment_id
+            ORDER BY s.recorded_at DESC
+            LIMIT 1
+        ) l
+        ORDER BY l.equipment_id
+    </select>
+
+    <!-- 장비 하나의 최근 n분 로그, 오래된 것부터 -->
+    <select id="findRecentLogs" resultType="map">
+        SELECT
+            recorded_at AS "recordedAt",
+            status      AS "status",
+            temperature AS "temperature",
+            vibration   AS "vibration"
+        FROM equipment_sensor_log
+        WHERE equipment_id = #{equipmentId}
+          AND recorded_at &gt;= now() - #{minutes} * INTERVAL '1 minute'
+        ORDER BY recorded_at
+    </select>
+
+    <!-- 최근 n분 동안 장비 · 상태별 행 수 = 머문 초 -->
+    <select id="countStatusSeconds" resultType="map">
+        SELECT
+            equipment_id AS "equipmentId",
+            status       AS "status",
+            count(*)     AS "seconds"
+        FROM equipment_sensor_log
+        WHERE recorded_at &gt;= now() - #{minutes} * INTERVAL '1 minute'
+        GROUP BY equipment_id, status
+        ORDER BY equipment_id, status
+    </select>
+
+    <!-- 상태 변경 구간
+         1) logs: 각 로그 옆에 바로 앞 로그의 상태(LAG)를 붙인다
+         2) changes: 앞 상태와 다른 로그(= 구간 시작)만 남기고, 다음 구간 시작(LEAD)을 이 구간의 끝으로 본다
+         3) 마지막 구간은 아직 진행 중이라 endedAt은 null, 길이는 마지막 로그 + 1초까지로 센다
+         첫 구간의 시작은 실제 시작이 아니라 조회 기간의 시작일 수 있다 -->
+    <select id="findStatusChanges" resultType="map">
+        WITH logs AS (
+            SELECT
+                recorded_at,
+                status,
+                LAG(status) OVER (ORDER BY recorded_at) AS prev_status
+            FROM equipment_sensor_log
+            WHERE equipment_id = #{equipmentId}
+              AND recorded_at &gt;= now() - #{minutes} * INTERVAL '1 minute'
+        ),
+        changes AS (
+            SELECT
+                status,
+                recorded_at AS started_at,
+                LEAD(recorded_at) OVER (ORDER BY recorded_at) AS ended_at
+            FROM logs
+            WHERE prev_status IS DISTINCT FROM status
+        )
+        SELECT
+            c.status     AS "status",
+            c.started_at AS "startedAt",
+            c.ended_at   AS "endedAt",
+            round(EXTRACT(EPOCH FROM (
+                COALESCE(c.ended_at, (SELECT max(recorded_at) FROM logs) + INTERVAL '1 second') - c.started_at
+            )))::int     AS "seconds"
+        FROM changes c
+        ORDER BY c.started_at DESC
+    </select>
+
+</mapper>

@@ -1,0 +1,24 @@
+Finalize GroupAggregate  (cost=54144.05..54226.19 rows=20 width=22) (actual time=41.992..42.898 rows=17 loops=1)
+  Group Key: equipment_id, status
+  Buffers: shared hit=16267 read=17559
+  ->  Gather Merge  (cost=54144.05..54225.69 rows=40 width=22) (actual time=41.910..42.891 rows=48 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=16267 read=17559
+        ->  Partial GroupAggregate  (cost=53144.03..53221.05 rows=20 width=22) (actual time=40.507..40.933 rows=16 loops=3)
+              Group Key: equipment_id, status
+              Buffers: shared hit=16267 read=17559
+              ->  Sort  (cost=53144.03..53163.24 rows=7682 width=14) (actual time=40.499..40.617 rows=6002 loops=3)
+                    Sort Key: equipment_id, status
+                    Sort Method: quicksort  Memory: 406kB
+                    Buffers: shared hit=16267 read=17559
+                    Worker 0:  Sort Method: quicksort  Memory: 382kB
+                    Worker 1:  Sort Method: quicksort  Memory: 383kB
+                    ->  Parallel Seq Scan on sensor_log_a  (cost=0.00..52648.26 rows=7682 width=14) (actual time=39.314..39.724 rows=6002 loops=3)
+                          Filter: (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '01:00:00'::interval))
+                          Rows Removed by Filter: 1001998
+                          Buffers: shared hit=16193 read=17559
+Planning:
+  Buffers: shared hit=2
+Planning Time: 0.068 ms
+Execution Time: 42.912 ms

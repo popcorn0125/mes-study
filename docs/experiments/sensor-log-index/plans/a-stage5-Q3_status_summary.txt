@@ -1,0 +1,15 @@
+Sort  (cost=765.06..765.11 rows=20 width=22) (actual time=2.837..2.837 rows=17 loops=1)
+  Sort Key: equipment_id, status
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=629
+  ->  HashAggregate  (cost=764.43..764.63 rows=20 width=22) (actual time=2.832..2.834 rows=17 loops=1)
+        Group Key: equipment_id, status
+        Batches: 1  Memory Usage: 24kB
+        Buffers: shared hit=629
+        ->  Index Scan using sensor_log_a_time_idx on sensor_log_a  (cost=0.43..628.83 rows=18080 width=14) (actual time=0.003..0.865 rows=18005 loops=1)
+              Index Cond: (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '01:00:00'::interval))
+              Buffers: shared hit=629
+Planning:
+  Buffers: shared hit=7
+Planning Time: 0.036 ms
+Execution Time: 2.844 ms

@@ -1,0 +1,25 @@
+Sort  (cost=6388.90..6397.94 rows=3614 width=78) (actual time=10.421..10.422 rows=9 loops=1)
+  Sort Key: c.started_at DESC
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=2173
+  CTE logs
+    ->  WindowAgg  (cost=2.06..5912.49 rows=3632 width=44) (actual time=0.006..9.856 rows=3601 loops=1)
+          Buffers: shared hit=2173
+          ->  Index Scan Backward using sensor_log_b_time_idx on sensor_log_b  (cost=0.43..5858.01 rows=3632 width=12) (actual time=0.002..9.270 rows=3601 loops=1)
+                Index Cond: (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '01:00:00'::interval))
+                Filter: ((equipment_id)::text = 'EQ_01'::text)
+                Rows Removed by Filter: 176449
+                Buffers: shared hit=2173
+  InitPlan 2
+    ->  Aggregate  (cost=81.72..81.73 rows=1 width=8) (actual time=0.162..0.162 rows=1 loops=1)
+          ->  CTE Scan on logs logs_1  (cost=0.00..72.64 rows=3632 width=8) (actual time=0.000..0.079 rows=3601 loops=1)
+  ->  Subquery Scan on c  (cost=0.04..181.11 rows=3614 width=78) (actual time=5.805..10.420 rows=9 loops=1)
+        Buffers: shared hit=2173
+        ->  WindowAgg  (cost=0.04..135.93 rows=3614 width=74) (actual time=5.804..10.256 rows=9 loops=1)
+              Buffers: shared hit=2173
+              ->  CTE Scan on logs  (cost=0.00..81.72 rows=3614 width=66) (actual time=0.006..10.253 rows=9 loops=1)
+                    Filter: ((prev_status)::text IS DISTINCT FROM (status)::text)
+                    Rows Removed by Filter: 3592
+                    Buffers: shared hit=2173
+Planning Time: 0.032 ms
+Execution Time: 10.433 ms

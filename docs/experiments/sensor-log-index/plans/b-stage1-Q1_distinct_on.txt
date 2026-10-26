@@ -1,0 +1,10 @@
+Unique  (cost=531623.39..546743.37 rows=50 width=30) (actual time=1857.741..2186.750 rows=50 loops=1)
+  Buffers: shared hit=416 read=30760, temp read=32637 written=32697
+  ->  Sort  (cost=531623.39..539183.38 rows=3023997 width=30) (actual time=1857.740..2088.276 rows=3024000 loops=1)
+        Sort Key: equipment_id, recorded_at DESC
+        Sort Method: external merge  Disk: 130560kB
+        Buffers: shared hit=416 read=30760, temp read=32637 written=32697
+        ->  Seq Scan on sensor_log_b  (cost=0.00..61415.97 rows=3023997 width=30) (actual time=0.020..167.408 rows=3024000 loops=1)
+              Buffers: shared hit=416 read=30760
+Planning Time: 0.032 ms
+Execution Time: 2219.237 ms

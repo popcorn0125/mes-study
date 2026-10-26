@@ -1,0 +1,9 @@
+Index Scan Backward using sensor_log_b_time_idx on sensor_log_b  (cost=0.43..1004.33 rows=594 width=24) (actual time=0.001..1.545 rows=601 loops=1)
+  Index Cond: (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '00:10:00'::interval))
+  Filter: ((equipment_id)::text = 'EQ_01'::text)
+  Rows Removed by Filter: 29449
+  Buffers: shared hit=367
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.014 ms
+Execution Time: 1.556 ms

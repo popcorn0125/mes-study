@@ -1,0 +1,13 @@
+Sort  (cost=2222.97..2224.49 rows=609 width=24) (actual time=0.136..0.148 rows=601 loops=1)
+  Sort Key: recorded_at
+  Sort Method: quicksort  Memory: 53kB
+  Buffers: shared hit=315
+  ->  Bitmap Heap Scan on sensor_log_b  (cost=18.67..2194.80 rows=609 width=24) (actual time=0.027..0.105 rows=601 loops=1)
+        Recheck Cond: (((equipment_id)::text = 'EQ_01'::text) AND (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '00:10:00'::interval)))
+        Heap Blocks: exact=310
+        Buffers: shared hit=315
+        ->  Bitmap Index Scan on sensor_log_b_equipment_time_idx  (cost=0.00..18.52 rows=609 width=0) (actual time=0.021..0.021 rows=601 loops=1)
+              Index Cond: (((equipment_id)::text = 'EQ_01'::text) AND (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '00:10:00'::interval)))
+              Buffers: shared hit=5
+Planning Time: 0.011 ms
+Execution Time: 0.162 ms

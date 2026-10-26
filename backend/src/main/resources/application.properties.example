@@ -1,15 +1,17 @@
 spring.application.name=backend
 server.port=8080
 
-# 개발 DB. 비밀번호는 커밋하지 않고 환경 변수 DB_PASSWORD로 받는다(없으면 postgres).
+# 개발 DB. 이 파일을 application.properties로 복사한 뒤 password에 로컬 DB 비밀번호를 적는다(application.properties는 커밋하지 않는다).
 spring.datasource.url=jdbc:postgresql://localhost:5432/mes
 spring.datasource.username=postgres
-spring.datasource.password=${DB_PASSWORD:postgres}
+spring.datasource.password=여기에_비밀번호
 
 # 서버가 뜰 때 schema.sql을 실행한다(CREATE TABLE IF NOT EXISTS라 이미 있으면 그대로 둔다).
 spring.sql.init.mode=always
 
 mybatis.mapper-locations=classpath:mapper/*.xml
+# 조회 결과 Map에 값이 null인 열(온도 · 진동 등)도 키를 남긴다(기본은 키를 빼 버린다)
+mybatis.configuration.call-setters-on-nulls=true
 
 # 센서 로그를 보내는 프론트 개발 서버 주소(CORS 허용)
 app.cors.allowed-origins=http://localhost:5173

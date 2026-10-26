@@ -1,0 +1,34 @@
+Sort  (cost=57650.21..57658.96 rows=3500 width=78) (actual time=43.603..43.613 rows=7 loops=1)
+  Sort Key: c.started_at DESC
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=2939 read=30735
+  CTE logs
+    ->  WindowAgg  (cost=56727.24..57189.61 rows=3518 width=44) (actual time=42.300..43.017 rows=3601 loops=1)
+          Buffers: shared hit=2939 read=30735
+          ->  Gather Merge  (cost=56727.11..57136.84 rows=3518 width=12) (actual time=42.297..42.504 rows=3601 loops=1)
+                Workers Planned: 2
+                Workers Launched: 2
+                Buffers: shared hit=2939 read=30735
+                ->  Sort  (cost=55727.09..55730.75 rows=1466 width=12) (actual time=41.286..41.310 rows=1200 loops=3)
+                      Sort Key: sensor_log_a.recorded_at
+                      Sort Method: quicksort  Memory: 91kB
+                      Buffers: shared hit=2939 read=30735
+                      Worker 0:  Sort Method: quicksort  Memory: 83kB
+                      Worker 1:  Sort Method: quicksort  Memory: 84kB
+                      ->  Parallel Seq Scan on sensor_log_a  (cost=0.00..55649.99 rows=1466 width=12) (actual time=40.923..41.207 rows=1200 loops=3)
+                            Filter: (((equipment_id)::text = 'CNC_01'::text) AND (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '01:00:00'::interval)))
+                            Rows Removed by Filter: 1006800
+                            Buffers: shared hit=2865 read=30735
+  InitPlan 2
+    ->  Aggregate  (cost=79.16..79.17 rows=1 width=8) (actual time=0.164..0.164 rows=1 loops=1)
+          ->  CTE Scan on logs logs_1  (cost=0.00..70.36 rows=3518 width=8) (actual time=0.000..0.079 rows=3601 loops=1)
+  ->  Subquery Scan on c  (cost=0.23..175.41 rows=3500 width=78) (actual time=42.850..43.601 rows=7 loops=1)
+        Buffers: shared hit=1101 read=10484
+        ->  WindowAgg  (cost=0.23..131.66 rows=3500 width=74) (actual time=42.848..43.432 rows=7 loops=1)
+              Buffers: shared hit=1101 read=10484
+              ->  CTE Scan on logs  (cost=0.00..79.16 rows=3500 width=66) (actual time=42.301..43.428 rows=7 loops=1)
+                    Filter: ((prev_status)::text IS DISTINCT FROM (status)::text)
+                    Rows Removed by Filter: 3594
+                    Buffers: shared hit=1101 read=10484
+Planning Time: 0.068 ms
+Execution Time: 43.633 ms

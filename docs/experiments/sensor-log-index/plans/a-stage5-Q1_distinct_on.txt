@@ -1,0 +1,8 @@
+Result  (cost=0.43..244744.51 rows=5 width=34) (actual time=0.021..565.518 rows=5 loops=1)
+  Buffers: shared read=182237
+  ->  Unique  (cost=0.43..244744.51 rows=5 width=34) (actual time=0.020..565.512 rows=5 loops=1)
+        Buffers: shared read=182237
+        ->  Index Scan using sensor_log_a_equipment_time_idx on sensor_log_a  (cost=0.43..237184.61 rows=3023958 width=34) (actual time=0.020..473.102 rows=3024000 loops=1)
+              Buffers: shared read=182237
+Planning Time: 0.044 ms
+Execution Time: 565.530 ms

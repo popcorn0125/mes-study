@@ -72,7 +72,7 @@ sequenceDiagram
 | `GET /api/v1/equipment/latest` | equipmentId, recordedAt, status, temperature, vibration | 설비 목록마다 `ORDER BY recorded_at DESC LIMIT 1` (`LATERAL`). 7절 실험에서 `DISTINCT ON`과 비교해 정한다 |
 | `GET /api/v1/equipment/{id}/sensor-logs?minutes=10` | recordedAt, status, temperature, vibration | `equipment_id = ? AND recorded_at >= now() - 기간`, 시간순 |
 | `GET /api/v1/equipment/status-summary?minutes=60` | equipmentId, status, seconds | 1행이 1초라 `GROUP BY equipment_id, status`의 `count(*)`가 곧 초 |
-| `GET /api/v1/equipment/{id}/status-changes?minutes=60` | status, startedAt, endedAt, seconds | `LAG(status)`로 앞 행과 상태가 다른 행만 남겨 구간을 만든다 |
+| `GET /api/v1/equipment/{id}/status-changes?minutes=60` | status, startedAt, endedAt, seconds | `LAG(status)`로 앞 행과 상태가 다른 행만 남겨 구간을 만든다. (구현 중 변경: 5초 넘게 수신이 끊긴 곳도 구간을 나누고, 길이는 로그 수로 센다) |
 | `GET /api/v1/production-performance` | workOrderId, equipmentId, totalCount, goodCount, badCount, lastUpdatedAt | 단순 조회 |
 
 - `minutes`는 1~1440만 받고, 벗어나면 400.
@@ -252,7 +252,7 @@ flowchart LR
 - [x] 인덱스 4종 × 설비 5대 · 50대 실행 계획 원문, 결과 표, 스크린샷이 `docs/`에 있다
 - [x] 최종 인덱스를 고른 이유가 측정값으로 설명돼 있다
 - [x] 생산 현황: Producer가 돌면 실적 표 수량이 택트 타임마다 바뀐다
-- [ ] 설비 관리: 상태 카드가 2초 안에 바뀌고, 추이 차트가 최근 10분을 보여 준다
+- [x] 설비 관리: 상태 카드가 2초 안에 바뀌고, 추이 차트가 최근 10분을 보여 준다
 - [ ] 서버를 끄면 "서버에 연결할 수 없습니다"가 보이고, 다시 켜면 저절로 돌아온다
 - [ ] 사이드바에는 생산 현황 · 설비 관리 · 자동 시뮬레이션만 보인다
 

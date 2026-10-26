@@ -35,8 +35,9 @@ public interface SensorLogQueryMapper {
 
     /**
      * 장비 하나의 최근 n분 동안 상태가 바뀐 구간을 최신 구간부터 돌려준다(상태 변경 이력용).
-     * LAG()로 바로 앞 로그와 상태가 다른 지점을 구간 시작으로 본다.
-     * 행 키: status, startedAt, endedAt(진행 중이면 null), seconds
+     * LAG()로 바로 앞 로그와 상태가 다르거나 5초 넘게 수신이 끊긴 지점을 구간 시작으로 본다.
+     * seconds는 구간의 로그 수(1행 = 1초)라 수신이 끊긴 시간은 들어가지 않는다.
+     * 행 키: status, startedAt, endedAt(5초 안에 로그를 받은 마지막 구간이면 null), seconds
      */
     List<Map<String, Object>> findStatusChanges(@Param("equipmentId") String equipmentId, @Param("minutes") int minutes);
 }

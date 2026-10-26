@@ -14,11 +14,14 @@ declare module 'vue-router' {
     icon: string
     /** true면 대시보드 레이아웃(사이드바·헤더) 없이 화면 전체를 쓴다 */
     fullscreen?: boolean
+    /** true면 사이드바에 보이지 않는다(라우트와 페이지는 남겨 주소로는 열린다) */
+    hidden?: boolean
   }
 }
 
 /**
  * 페이지는 MES 기능 단위로 나눈다(docs/dashboard-plan.md).
+ * 아직 보여 줄 데이터가 없는 메뉴(작업지시 · 품질 · 자재 · 리포트)는 hidden으로 사이드바에서 숨긴다.
  */
 export const routes: RouteRecordRaw[] = [
   {
@@ -31,7 +34,7 @@ export const routes: RouteRecordRaw[] = [
     path: '/work-orders',
     name: 'work-orders',
     component: WorkOrderView,
-    meta: { title: '작업지시 관리', icon: '📋' },
+    meta: { title: '작업지시 관리', icon: '📋', hidden: true },
   },
   {
     path: '/equipment',
@@ -43,19 +46,19 @@ export const routes: RouteRecordRaw[] = [
     path: '/quality',
     name: 'quality',
     component: QualityView,
-    meta: { title: '품질 관리', icon: '✅' },
+    meta: { title: '품질 관리', icon: '✅', hidden: true },
   },
   {
     path: '/materials',
     name: 'materials',
     component: MaterialView,
-    meta: { title: '자재 / 재고', icon: '📦' },
+    meta: { title: '자재 / 재고', icon: '📦', hidden: true },
   },
   {
     path: '/reports',
     name: 'reports',
     component: ReportView,
-    meta: { title: '실적 리포트', icon: '📈' },
+    meta: { title: '실적 리포트', icon: '📈', hidden: true },
   },
   {
     path: '/simulator',

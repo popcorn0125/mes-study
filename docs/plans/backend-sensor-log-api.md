@@ -130,7 +130,7 @@ backend/
 ## 9. 결정 사항
 
 1. **빌드 도구** → Gradle.
-2. **DB 버전** → 로컬 PostgreSQL 15를 쓴다.
+2. **DB 버전** → 로컬 PostgreSQL 15를 쓴다. (구현 중 확인: Homebrew로 깔린 `psql` 클라이언트는 15이고, 실제로 접속한 서버는 PostgreSQL 17.4였다. 쓰는 문법은 둘 다 같다)
 3. **DB 테스트** → 로컬 PostgreSQL에 테스트 전용 DB(`mes_test`)를 만들어 쓴다. 개발용 DB(`mes`)와 섞이지 않는다. Docker가 없어 Testcontainers는 쓰지 않는다.
 4. **센서 로그 인덱스** → 추가하지 않는다.
 5. **패키지** → `com.messtudy.backend`.

@@ -1,0 +1,31 @@
+Sort  (cost=11029.70..11038.35 rows=3461 width=78) (actual time=1.980..1.981 rows=7 loops=1)
+  Sort Key: c.started_at DESC
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=218
+  CTE logs
+    ->  WindowAgg  (cost=10513.70..10574.54 rows=3478 width=44) (actual time=0.509..1.252 rows=3601 loops=1)
+          Buffers: shared hit=218
+          ->  Sort  (cost=10513.68..10522.37 rows=3478 width=12) (actual time=0.508..0.596 rows=3601 loops=1)
+                Sort Key: sensor_log_a.recorded_at
+                Sort Method: quicksort  Memory: 209kB
+                Buffers: shared hit=218
+                ->  Bitmap Heap Scan on sensor_log_a  (cost=104.08..10309.10 rows=3478 width=12) (actual time=0.081..0.345 rows=3601 loops=1)
+                      Recheck Cond: (((equipment_id)::text = 'CNC_01'::text) AND (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '01:00:00'::interval)))
+                      Heap Blocks: exact=201
+                      Buffers: shared hit=218
+                      ->  Bitmap Index Scan on sensor_log_a_equipment_time_idx  (cost=0.00..103.21 rows=3478 width=0) (actual time=0.075..0.076 rows=3601 loops=1)
+                            Index Cond: (((equipment_id)::text = 'CNC_01'::text) AND (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '01:00:00'::interval)))
+                            Buffers: shared hit=17
+  InitPlan 2
+    ->  Aggregate  (cost=78.25..78.27 rows=1 width=8) (actual time=0.219..0.220 rows=1 loops=1)
+          ->  CTE Scan on logs logs_1  (cost=0.00..69.56 rows=3478 width=8) (actual time=0.000..0.107 rows=3601 loops=1)
+  ->  Subquery Scan on c  (cost=0.23..173.43 rows=3461 width=78) (actual time=1.087..1.979 rows=7 loops=1)
+        Buffers: shared hit=218
+        ->  WindowAgg  (cost=0.23..130.17 rows=3461 width=74) (actual time=1.087..1.757 rows=7 loops=1)
+              Buffers: shared hit=218
+              ->  CTE Scan on logs  (cost=0.00..78.25 rows=3461 width=66) (actual time=0.510..1.755 rows=7 loops=1)
+                    Filter: ((prev_status)::text IS DISTINCT FROM (status)::text)
+                    Rows Removed by Filter: 3594
+                    Buffers: shared hit=218
+Planning Time: 0.040 ms
+Execution Time: 1.995 ms

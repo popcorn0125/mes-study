@@ -1,0 +1,23 @@
+Sort  (cost=1665699.04..1665699.17 rows=50 width=30) (actual time=3320.293..3320.295 rows=50 loops=1)
+  Sort Key: s.equipment_id
+  Sort Method: quicksort  Memory: 27kB
+  Buffers: shared hit=1 read=1561419
+  ->  Nested Loop  (cost=33313.91..1665697.63 rows=50 width=30) (actual time=65.331..3320.210 rows=50 loops=1)
+        Buffers: shared hit=1 read=1561419
+        ->  Seq Scan on equipment_b e  (cost=0.00..1.50 rows=50 width=6) (actual time=0.003..0.031 rows=50 loops=1)
+              Buffers: shared hit=1
+        ->  Limit  (cost=33313.91..33313.91 rows=1 width=30) (actual time=66.402..66.402 rows=1 loops=50)
+              Buffers: shared read=1561419
+              ->  Sort  (cost=33313.91..33465.12 rows=60484 width=30) (actual time=66.399..66.399 rows=1 loops=50)
+                    Sort Key: s.recorded_at DESC
+                    Sort Method: top-N heapsort  Memory: 25kB
+                    Buffers: shared read=1561419
+                    ->  Bitmap Heap Scan on sensor_log_b s  (cost=677.18..33011.49 rows=60484 width=30) (actual time=4.632..61.898 rows=60480 loops=50)
+                          Recheck Cond: ((equipment_id)::text = (e.equipment_id)::text)
+                          Heap Blocks: exact=1558769
+                          Buffers: shared read=1561419
+                          ->  Bitmap Index Scan on sensor_log_b_equipment_idx  (cost=0.00..662.06 rows=60484 width=0) (actual time=2.112..2.112 rows=60480 loops=50)
+                                Index Cond: ((equipment_id)::text = (e.equipment_id)::text)
+                                Buffers: shared read=2650
+Planning Time: 0.065 ms
+Execution Time: 3320.440 ms

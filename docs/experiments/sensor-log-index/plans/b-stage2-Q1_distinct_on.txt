@@ -1,0 +1,12 @@
+Unique  (cost=8421.14..466400.06 rows=50 width=30) (actual time=64.403..3478.871 rows=50 loops=1)
+  Buffers: shared read=1561321, temp read=16361 written=16411
+  ->  Incremental Sort  (cost=8421.14..458839.54 rows=3024211 width=30) (actual time=64.402..3388.219 rows=3024000 loops=1)
+        Sort Key: equipment_id, recorded_at DESC
+        Presorted Key: equipment_id
+        Full-sort Groups: 50  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+        Pre-sorted Groups: 50  Sort Method: external merge  Average Disk: 2623kB  Peak Disk: 2624kB
+        Buffers: shared read=1561321, temp read=16361 written=16411
+        ->  Index Scan using sensor_log_b_equipment_idx on sensor_log_b  (cost=0.43..180848.96 rows=3024211 width=30) (actual time=0.015..2755.016 rows=3024000 loops=1)
+              Buffers: shared read=1561321
+Planning Time: 0.036 ms
+Execution Time: 3480.610 ms

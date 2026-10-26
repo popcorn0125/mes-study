@@ -1,0 +1,20 @@
+Sort  (cost=372121.11..372121.12 rows=5 width=34) (actual time=839.135..839.135 rows=5 loops=1)
+  Sort Key: s.equipment_id
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=6006 read=161995
+  ->  Nested Loop  (cost=74423.99..372121.05 rows=5 width=34) (actual time=169.882..839.127 rows=5 loops=1)
+        Buffers: shared hit=6006 read=161995
+        ->  Seq Scan on equipment_a e  (cost=0.00..1.05 rows=5 width=10) (actual time=0.002..0.004 rows=5 loops=1)
+              Buffers: shared hit=1
+        ->  Limit  (cost=74423.99..74423.99 rows=1 width=34) (actual time=167.823..167.823 rows=1 loops=5)
+              Buffers: shared hit=6005 read=161995
+              ->  Sort  (cost=74423.99..75935.99 rows=604800 width=34) (actual time=167.820..167.820 rows=1 loops=5)
+                    Sort Key: s.recorded_at DESC
+                    Sort Method: top-N heapsort  Memory: 25kB
+                    Buffers: shared hit=6005 read=161995
+                    ->  Seq Scan on sensor_log_a s  (cost=0.00..71399.99 rows=604800 width=34) (actual time=0.007..125.268 rows=604800 loops=5)
+                          Filter: ((equipment_id)::text = (e.equipment_id)::text)
+                          Rows Removed by Filter: 2419200
+                          Buffers: shared hit=6005 read=161995
+Planning Time: 0.063 ms
+Execution Time: 839.146 ms

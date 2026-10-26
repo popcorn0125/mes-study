@@ -31,7 +31,7 @@
 | 1 | 데이터가 없는 메뉴 4개(작업지시 · 품질 · 자재 · 리포트) | 사이드바에서 숨긴다. 라우트와 빈 페이지 파일은 남긴다(라우트 `meta.hidden`) |
 | 2 | 갱신 방식 | 2초 폴링(axios). WebSocket · SSE는 쓰지 않는다 |
 | 3 | 차트 | ECharts를 다시 설치하고, 쓰는 차트(선 · 막대)만 등록한다 |
-| 4 | 센서 로그 인덱스 | 인덱스 없음 · `equipment_id` 단일 · `recorded_at` 단일 · 복합을 설비 5대 · 50대 데이터로 측정해 비교하고, 결과를 보고 최종 인덱스를 정한다(7절) |
+| 4 | 센서 로그 인덱스 | 인덱스 없음 · `equipment_id` 단일 · `recorded_at` 단일 · 복합을 설비 5대 · 50대 데이터로 측정해 비교하고, 결과를 보고 최종 인덱스를 정한다(7절). **결과: `recorded_at DESC` 단일 + 최신 1건은 LATERAL 형태(7.5)** |
 | 5 | 상태 변경 이력 | 이번 범위에 넣는다(`LAG()`) |
 | 6 | 브랜치 | 수신 API와 대시보드 정리를 커밋한 뒤 `feature/dashboard-api`를 새로 만든다 |
 | 7 | 백엔드 형식 | 수신 API와 같게: Controller → Service → Mapper(XML), 응답은 `List<Map>`, DTO 없음 |
@@ -185,6 +185,17 @@ flowchart LR
 
 실행 계획 원문(psql 출력)을 그대로 터미널 모양 페이지로 띄워 캡처하고, 차트는 측정값으로 그려 캡처한다. 원문 텍스트도 같이 남겨 숫자를 다시 확인할 수 있게 한다.
 
+### 7.5 결과 (2026-10-26)
+
+자세한 표 · 실행 계획 · 해석: [`docs/experiments/sensor-log-index/README.md`](../experiments/sensor-log-index/README.md)
+
+- **최종 인덱스는 `recorded_at DESC` 단일 하나.** 설비 5대 데이터에서 Q1 LATERAL 0.020ms · Q2 0.180ms · Q3 3.77ms · Q4 2.52ms (인덱스 없음: 866 · 42.9 · 40.8 · 44.0ms). 크기 34MB.
+- 7.2의 예상과 달랐던 점
+  - 복합 인덱스가 Q2 · Q4에 유리할 것으로 봤지만, 설비 5대에서는 차이가 0.07~0.4ms뿐이었다. 대신 Q3에서는 쓰이지 않아 40.8ms(Seq Scan)였고 크기는 112MB였다. 설비 50대 데이터에서는 Q2가 12배 빨라서, 설비가 늘면 다시 본다.
+  - `equipment_id` 단일 인덱스는 플래너가 무시할 것으로 봤지만, 실제로는 골랐고 Seq Scan보다 1.5배 느려졌다.
+  - 복합 + `recorded_at`(⑤)에서는 플래너가 거의 모든 쿼리에 `recorded_at`을 골라 복합 인덱스가 쓰이지 않았다(`random_page_cost` 기본값 4 영향).
+- Q1 형태는 LATERAL로 확정한다. 같은 인덱스로 `DISTINCT ON`은 2.5초, LATERAL은 0.02ms였다.
+
 ## 8. 만들 파일
 
 ```
@@ -192,13 +203,17 @@ backend/
 ├── sql/bench/                       # 실험용 SQL (서버가 실행하지 않음)
 │   ├── 01-seed.sql                  # mes_bench에 데이터셋 A(5대) · B(50대) 생성
 │   ├── 02-indexes.sql               # 단계별 인덱스 만들기 · 지우기
-│   └── 03-queries.sql               # 측정 쿼리 Q1~Q4 (EXPLAIN ANALYZE)
+│   ├── 03-queries.sql               # 측정 쿼리 Q1~Q4 (EXPLAIN ANALYZE)
+│   ├── 04-insert-cost.sql           # INSERT 비용 측정
+│   └── run.sh                       # 데이터셋 × 단계 × 쿼리 전체 측정
 └── src/main/
     ├── java/com/messtudy/backend/
     │   ├── controller/EquipmentQueryController.java     # /api/v1/equipment/*
     │   ├── controller/ProductionQueryController.java    # /api/v1/production-performance
     │   ├── service/EquipmentQueryService.java           # 기간 검사(1~1440분)
-    │   └── mapper/SensorLogQueryMapper.java (+ XML)     # 조회 SQL 4개
+    │   ├── service/ProductionQueryService.java
+    │   ├── mapper/SensorLogQueryMapper.java (+ XML)     # 조회 SQL 4개
+    │   └── mapper/ProductionQueryMapper.java (+ XML)    # 실적 조회(구현 중 변경: 수신용 ProductionPerformanceMapper와 분리)
     └── resources/schema.sql                             # 실험으로 고른 인덱스 추가
 
 frontend/src/
@@ -233,9 +248,9 @@ flowchart LR
 ## 10. 완료 기준
 
 - [ ] `./gradlew test`, `npm test` · `npm run lint` · `npm run build` 통과
-- [ ] 조회 API 5개가 설계대로 응답하고, 잘못된 `minutes`는 400
-- [ ] 인덱스 4종 × 설비 5대 · 50대 실행 계획 원문, 결과 표, 스크린샷이 `docs/`에 있다
-- [ ] 최종 인덱스를 고른 이유가 측정값으로 설명돼 있다
+- [x] 조회 API 5개가 설계대로 응답하고, 잘못된 `minutes`는 400
+- [x] 인덱스 4종 × 설비 5대 · 50대 실행 계획 원문, 결과 표, 스크린샷이 `docs/`에 있다
+- [x] 최종 인덱스를 고른 이유가 측정값으로 설명돼 있다
 - [ ] 생산 현황: Producer가 돌면 실적 표 수량이 택트 타임마다 바뀐다
 - [ ] 설비 관리: 상태 카드가 2초 안에 바뀌고, 추이 차트가 최근 10분을 보여 준다
 - [ ] 서버를 끄면 "서버에 연결할 수 없습니다"가 보이고, 다시 켜면 저절로 돌아온다

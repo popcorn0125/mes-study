@@ -1,0 +1,21 @@
+Gather Merge  (cost=45641.03..45699.37 rows=500 width=24) (actual time=62.765..64.139 rows=601 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=11 read=34117
+  ->  Sort  (cost=44641.01..44641.63 rows=250 width=24) (actual time=61.604..61.608 rows=200 loops=3)
+        Sort Key: recorded_at
+        Sort Method: quicksort  Memory: 34kB
+        Buffers: shared hit=11 read=34117
+        Worker 0:  Sort Method: quicksort  Memory: 34kB
+        Worker 1:  Sort Method: quicksort  Memory: 34kB
+        ->  Parallel Bitmap Heap Scan on sensor_log_a  (cost=6527.97..44631.05 rows=250 width=24) (actual time=61.525..61.569 rows=200 loops=3)
+              Recheck Cond: ((equipment_id)::text = 'CNC_01'::text)
+              Filter: (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '00:10:00'::interval))
+              Rows Removed by Filter: 201400
+              Heap Blocks: exact=11415
+              Buffers: shared read=34112
+              ->  Bitmap Index Scan on sensor_log_a_equipment_idx  (cost=0.00..6527.82 rows=596719 width=0) (actual time=7.605..7.606 rows=604800 loops=1)
+                    Index Cond: ((equipment_id)::text = 'CNC_01'::text)
+                    Buffers: shared read=512
+Planning Time: 0.041 ms
+Execution Time: 64.167 ms

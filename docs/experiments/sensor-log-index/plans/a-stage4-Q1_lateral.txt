@@ -1,0 +1,15 @@
+Sort  (cost=4.59..4.61 rows=5 width=34) (actual time=0.029..0.030 rows=5 loops=1)
+  Sort Key: s.equipment_id
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=21
+  ->  Nested Loop  (cost=0.43..4.54 rows=5 width=34) (actual time=0.011..0.028 rows=5 loops=1)
+        Buffers: shared hit=21
+        ->  Seq Scan on equipment_a e  (cost=0.00..1.05 rows=5 width=10) (actual time=0.003..0.003 rows=5 loops=1)
+              Buffers: shared hit=1
+        ->  Limit  (cost=0.43..0.69 rows=1 width=34) (actual time=0.005..0.005 rows=1 loops=5)
+              Buffers: shared hit=20
+              ->  Index Scan using sensor_log_a_equipment_time_idx on sensor_log_a s  (cost=0.43..155487.17 rows=604921 width=34) (actual time=0.005..0.005 rows=1 loops=5)
+                    Index Cond: ((equipment_id)::text = (e.equipment_id)::text)
+                    Buffers: shared hit=20
+Planning Time: 0.024 ms
+Execution Time: 0.034 ms

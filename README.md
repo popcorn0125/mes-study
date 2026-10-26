@@ -84,7 +84,10 @@ Java 17과 PostgreSQL이 필요합니다. Gradle은 래퍼(`gradlew`)를 쓰므�
    createdb mes
    createdb mes_test
    ```
-2. DB 비밀번호를 환경 변수 `DB_PASSWORD`로 넣습니다(예: `~/.zshrc`에 `export DB_PASSWORD=...`). 비밀번호는 파일에 적지 않아 커밋되지 않고, 환경 변수가 없으면 `postgres`를 씁니다. 계정 이름이 `postgres`가 아니면 두 properties 파일의 `username`을 고칩니다.
+2. 설정 파일을 복사하고 `password`에 로컬 DB 비밀번호를 적습니다. `application.properties`는 `.gitignore`에 있어 커밋되지 않고, 저장소에는 비밀번호 자리를 비운 `application.properties.example`만 올라갑니다. 테스트(`mes_test`)도 같은 계정을 씁니다. 계정 이름이 `postgres`가 아니면 `username`도 고칩니다.
+   ```bash
+   cp backend/src/main/resources/application.properties.example backend/src/main/resources/application.properties
+   ```
 3. 실행합니다. 서버가 뜰 때 테이블이 없으면 `schema.sql`로 만듭니다.
    ```bash
    cd backend
@@ -132,7 +135,7 @@ backend/src/main/
 │   ├── mapper/       # MyBatis 매퍼 인터페이스: 센서 로그 다중 INSERT, 생산 실적 UPSERT
 │   └── config/       # CORS, 400 오류 응답
 └── resources/
-    ├── application.properties
+    ├── application.properties.example  # 복사해서 application.properties로 씀(실제 파일은 커밋 안 함)
     ├── schema.sql    # 테이블 2개
     └── mapper/       # 매퍼 SQL(XML)
 ```

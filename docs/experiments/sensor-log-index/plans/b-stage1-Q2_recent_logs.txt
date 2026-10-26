@@ -1,0 +1,16 @@
+Gather Merge  (cost=54235.72..54292.89 rows=490 width=24) (actual time=42.313..42.996 rows=601 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=1194 read=30056
+  ->  Sort  (cost=53235.70..53236.31 rows=245 width=24) (actual time=41.326..41.331 rows=200 loops=3)
+        Sort Key: recorded_at
+        Sort Method: quicksort  Memory: 35kB
+        Buffers: shared hit=1194 read=30056
+        Worker 0:  Sort Method: quicksort  Memory: 33kB
+        Worker 1:  Sort Method: quicksort  Memory: 33kB
+        ->  Parallel Seq Scan on sensor_log_b  (cost=0.00..53225.98 rows=245 width=24) (actual time=40.869..41.288 rows=200 loops=3)
+              Filter: (((equipment_id)::text = 'EQ_01'::text) AND (recorded_at >= ('2026-10-24 00:00:00+09'::timestamp with time zone - '00:10:00'::interval)))
+              Rows Removed by Filter: 1007800
+              Buffers: shared hit=1120 read=30056
+Planning Time: 0.039 ms
+Execution Time: 43.018 ms

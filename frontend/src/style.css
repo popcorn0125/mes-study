@@ -136,3 +136,104 @@ body,
   margin: 0;
   color: #8b949e;
 }
+
+/* ── 대시보드 화면 공통 (카드 · 요약 숫자 · 표 · 차트 · 연결 안내) ── */
+.dash-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1200px;
+}
+.dash-card {
+  padding: 16px 18px;
+  background: #161b22;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+.dash-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.dash-card__header h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.dash-card__header span {
+  font-size: 13px;
+  color: #8b949e;
+}
+.dash-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.dash-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  background: #161b22;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+.dash-kpi__label {
+  font-size: 13px;
+  color: #8b949e;
+}
+.dash-kpi__value {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.dash-kpi__value small {
+  margin-left: 2px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #8b949e;
+}
+.dash-kpi__value--text {
+  font-size: 20px;
+}
+.dash-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.dash-table th,
+.dash-table td {
+  padding: 9px 10px;
+  text-align: right;
+  border-bottom: 1px solid #21262d;
+}
+.dash-table thead th {
+  font-size: 13px;
+  font-weight: 600;
+  color: #8b949e;
+}
+.dash-table th:first-child {
+  text-align: left;
+}
+.dash-table tbody th {
+  font-weight: 600;
+}
+.dash-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.dash-chart {
+  height: 240px;
+}
+.dash-notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #ffdcd7;
+  background: #f8514926;
+  border: 1px solid #f8514966;
+  border-radius: 8px;
+}

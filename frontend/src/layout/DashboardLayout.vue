@@ -5,7 +5,7 @@ import { routes } from '@/router'
 /** 관리자 모드 레이아웃: 왼쪽 사이드바(MES 기능 메뉴) + 상단 헤더(페이지 제목). */
 const route = useRoute()
 
-const menu = routes.filter((r) => r.name && !r.meta?.fullscreen)
+const menu = routes.filter((r) => r.name && !r.meta?.fullscreen && !r.meta?.hidden)
 const simulator = routes.find((r) => r.name === 'simulator')!
 </script>
 

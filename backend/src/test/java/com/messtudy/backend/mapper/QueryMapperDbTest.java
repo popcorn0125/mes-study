@@ -114,6 +114,20 @@ class QueryMapperDbTest {
     }
 
     @Test
+    void 수신이_5초_넘게_끊기면_같은_상태여도_구간을_나누고_끊긴_시간은_세지_않는다() {
+        // 20 ~ 18초 전 RUN 3초 → 10초 동안 수신 없음 → 7 ~ 5초 전 RUN 3초(마지막 로그가 5초 전이라 진행 중 아님)
+        for (int s : new int[] {20, 19, 18, 7, 6, 5}) {
+            log("CNC_01", s, "RUN", "40.0");
+        }
+
+        List<Map<String, Object>> rows = sensorLogQueryMapper.findStatusChanges("CNC_01", 60);
+
+        assertThat(rows).extracting(r -> r.get("status")).containsExactly("RUN", "RUN");
+        assertThat(rows).extracting(r -> r.get("seconds")).containsExactly(3, 3);
+        assertThat(rows).allSatisfy(r -> assertThat(r.get("endedAt")).isNotNull());
+    }
+
+    @Test
     void 실적을_작업지시_장비_순으로_돌려준다() {
         production("WINDER_01", 2);
         production("CNC_01", 3);

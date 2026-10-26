@@ -1,3 +1,12 @@
+import type { SensorStatus } from '@/producer/generate'
+
+/** 설비 상태 색과 표시 이름(3D 라벨 · 대시보드 공용). 색만으로 구분하지 않도록 이름을 함께 쓴다. */
+export const EQUIPMENT_STATUS_STYLE: Record<SensorStatus, { color: string; label: string }> = {
+  RUN: { color: '#3fb950', label: '가동' },
+  WARN: { color: '#d29922', label: '경고' },
+  DOWN: { color: '#f85149', label: '고장' },
+}
+
 type SensorLevel = 'NORMAL' | 'WARNING' | 'CRITICAL'
 
 export const SENSOR_LEVEL_STYLE: Record<SensorLevel, { color: string; label: string }> = {

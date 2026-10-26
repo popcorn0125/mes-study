@@ -4,7 +4,7 @@ import { useLoop } from '@tresjs/core'
 import type { MeshStandardMaterial } from 'three'
 import type { SensorStatus } from '@/producer/generate'
 import { findLog, useSensorLogs } from '@/producer/useSensorProducer'
-import { SENSOR_LEVEL_STYLE } from './colors'
+import { EQUIPMENT_STATUS_STYLE, SENSOR_LEVEL_STYLE } from './colors'
 import { EQUIPMENT_SIZE, type Vec3 } from './layout'
 import CncMachine from './machines/CncMachine.vue'
 import GenericMachine from './machines/GenericMachine.vue'
@@ -33,12 +33,8 @@ const MODELS: Record<MachineKind, unknown> = {
   generic: GenericMachine,
 }
 
-/** 상태 색과 표시 이름. 색만으로 구분하지 않도록 라벨에도 이름을 함께 쓴다. */
-const STATUS_STYLE: Record<SensorStatus, { color: string; label: string }> = {
-  RUN: { color: '#3fb950', label: '가동' },
-  WARN: { color: '#d29922', label: '경고' },
-  DOWN: { color: '#f85149', label: '고장' },
-}
+/** 상태 색과 표시 이름(대시보드와 같은 정의) */
+const STATUS_STYLE = EQUIPMENT_STATUS_STYLE
 
 // 더미 데이터의 측정값은 늘 정상 범위 안이므로 정상 색으로 보여 준다.
 const NORMAL_COLOR = SENSOR_LEVEL_STYLE.NORMAL.color

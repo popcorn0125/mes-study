@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
-import { fetchLatestLogs, fetchProduction } from '@/api/dashboard'
+import { computed } from 'vue'
+import { fetchProduction } from '@/api/dashboard'
+import { useNow } from '@/composables/useNow'
 import { usePolling } from '@/composables/usePolling'
+import { useLatestLogs } from '@/dashboard/latestLogs'
 import ConnectionNotice from '@/dashboard/ConnectionNotice.vue'
 import ProductionChart from '@/dashboard/ProductionChart.vue'
 import {
@@ -14,12 +16,11 @@ import {
 
 /** 생산 현황: 작업 실적(누적 수량)과 설비 가동 여부를 2초마다 다시 읽어 보여 준다 */
 const production = usePolling(fetchProduction)
-const latest = usePolling(fetchLatestLogs)
+// 최신 로그는 레이아웃이 2초마다 한 번 조회한 것을 헤더와 같이 쓴다
+const latest = useLatestLogs()
 
 /** "n초 전" 문구가 폴링 사이에도 흐르도록 1초마다 갱신하는 현재 시각 */
-const now = ref(Date.now())
-const clock = setInterval(() => (now.value = Date.now()), 1000)
-onBeforeUnmount(() => clearInterval(clock))
+const now = useNow()
 
 const workOrderId = computed(() => currentWorkOrderId(production.data.value ?? []))
 const rows = computed(() => toProductionRows(production.data.value ?? [], workOrderId.value))

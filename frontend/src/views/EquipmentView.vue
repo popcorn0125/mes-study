@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { fetchLatestLogs, fetchRecentLogs, fetchStatusChanges, fetchStatusSummary } from '@/api/dashboard'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { fetchRecentLogs, fetchStatusChanges, fetchStatusSummary } from '@/api/dashboard'
+import { useNow } from '@/composables/useNow'
 import { usePolling } from '@/composables/usePolling'
+import { useLatestLogs } from '@/dashboard/latestLogs'
 import ConnectionNotice from '@/dashboard/ConnectionNotice.vue'
 import EquipmentStatusCard from '@/dashboard/EquipmentStatusCard.vue'
 import MetricTrendChart from '@/dashboard/MetricTrendChart.vue'
@@ -19,10 +22,27 @@ const STATUS_MINUTES = 60
  * 설비 관리: 설비 5대의 현재 상태 카드, 선택한 설비의 온도 · 진동 추이와 상태 변경 이력,
  * 전체 설비의 최근 1시간 가동률을 2초마다 다시 읽어 보여 준다.
  */
-const selectedId = ref(PRODUCER_EQUIPMENT[0].id)
+const route = useRoute()
+const router = useRouter()
+
+/** 주소의 ?equipment= 값이 정의된 설비면 그 ID, 아니면 첫 설비 */
+function equipmentFromQuery(value: unknown): string {
+  return PRODUCER_EQUIPMENT.some((e) => e.id === value) ? (value as string) : PRODUCER_EQUIPMENT[0].id
+}
+
+/** 선택한 설비. 헤더 알림에서 /equipment?equipment=ID로 들어오면 그 설비로 시작한다 */
+const selectedId = ref(equipmentFromQuery(route.query.equipment))
+
+// 같은 화면에서 주소만 바뀌면(헤더 알림을 다시 누름) 선택을 따라 바꾸고,
+// 카드로 선택을 바꾸면 주소에도 남겨 새로 고침 · 공유해도 같은 설비가 보이게 한다
+watch(() => route.query.equipment, (value) => (selectedId.value = equipmentFromQuery(value)))
+watch(selectedId, (id) => {
+  if (route.query.equipment !== id) void router.replace({ query: { ...route.query, equipment: id } })
+})
 const selected = computed(() => PRODUCER_EQUIPMENT.find((e) => e.id === selectedId.value)!)
 
-const latest = usePolling(fetchLatestLogs)
+// 최신 로그는 레이아웃이 2초마다 한 번 조회한 것을 헤더와 같이 쓴다
+const latest = useLatestLogs()
 const summary = usePolling(() => fetchStatusSummary(STATUS_MINUTES))
 
 /**
@@ -49,9 +69,7 @@ watch(selectedId, () => {
 })
 
 /** 통신 끊김 판정 · "n초 전" · 추이 가로축 끝에 쓰는 현재 시각(1초마다 갱신) */
-const now = ref(Date.now())
-const clock = setInterval(() => (now.value = Date.now()), 1000)
-onBeforeUnmount(() => clearInterval(clock))
+const now = useNow()
 
 const cards = computed(() => toEquipmentCards(latest.data.value ?? [], now.value))
 const utilization = computed(() => toUtilization(summary.data.value ?? []))

@@ -41,6 +41,9 @@ public interface WorkOrderMapper {
      */
     List<Map<String, Object>> findPerformance(String workOrderId);
 
+    /** 유형별 누적 불량 수. 행 키: equipmentId, defectCode, defectCount */
+    List<Map<String, Object>> findDefects(String workOrderId);
+
     /**
      * 지금 상태가 from 중 하나일 때만 to로 바꾼다. 시각 열(하달 · 시작 · 완료)도 함께 채운다.
      * @return 바꾼 행 수(0이면 지금 상태에서 할 수 없는 전환)

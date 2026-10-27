@@ -43,7 +43,21 @@ class SensorLogServiceTest {
             upsertedRows.addAll(rows);
             return rows.size();
         }
+
+        @Override
+        public int insertDefectEvents(List<Map<String, Object>> rows) {
+            calls.add("insertDefectEvents");
+            return rows.size();
+        }
+
+        @Override
+        public int upsertDefects(List<Map<String, Object>> rows) {
+            calls.add("upsertDefects");
+            defectRows.addAll(rows);
+            return rows.size();
+        }
     };
+    private final List<Map<String, Object>> defectRows = new ArrayList<>();
     private final SensorLogService service = new SensorLogService(sensorLogMapper, productionMapper);
 
     /** 프론트가 보내는 것과 같은 모양의 항목(Jackson처럼 숫자는 Integer · Double) */
@@ -177,6 +191,57 @@ class SensorLogServiceTest {
                 .isInstanceOf(InvalidPayloadException.class)
                 .hasMessageContaining("[1].status");
         assertThat(insertedLogs).isEmpty();
+    }
+
+    /** CNC 실적 3개 중 불량 2개, 유형별 누적을 함께 보낸다 */
+    private static Map<String, Object> withDefects(Map<String, Object> defects) {
+        Map<String, Object> item = item("CNC_01", 3);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> production = (Map<String, Object>) item.get("production");
+        production.put("defects", defects);
+        return item;
+    }
+
+    @Test
+    void 유형별_불량은_유형마다_한_행으로_실적_뒤에_저장한다() {
+        service.save(List.of(withDefects(new HashMap<>(Map.of("MACHINING_DIMENSION", 1, "MACHINING_SURFACE", 1)))));
+
+        assertThat(calls).containsExactly("insertEvents", "upsertAll", "insertDefectEvents", "upsertDefects");
+        assertThat(defectRows).extracting(row -> row.get("defectCode") + "=" + row.get("defectCount"))
+                .containsExactlyInAnyOrder("MACHINING_DIMENSION=1", "MACHINING_SURFACE=1");
+        assertThat(defectRows.get(0)).containsEntry("workOrderId", "WO-20261024-001").containsEntry("equipmentId", "CNC_01")
+                .containsEntry("occurredAt", OffsetDateTime.parse("2026-10-24T23:37:12.451Z"));
+    }
+
+    @Test
+    void 유형별_불량이_없으면_불량_저장을_부르지_않는다() {
+        service.save(List.of(item("CNC_01", 3)));                       // defects 없음(이전 시뮬레이터)
+        service.save(List.of(withDefects(new HashMap<>())));          // 빈 객체
+
+        assertThat(calls).doesNotContain("insertDefectEvents", "upsertDefects");
+    }
+
+    @Test
+    void 유형별_합이_불량_수보다_적은_것은_미분류로_허용한다() {
+        service.save(List.of(withDefects(new HashMap<>(Map.of("MACHINING_DIMENSION", 1)))));
+
+        assertThat(defectRows).hasSize(1);
+    }
+
+    @Test
+    void 유형별_불량_값이_틀리면_예외를_내고_저장하지_않는다() {
+        assertInvalid(withDefects(new HashMap<>(Map.of("MACHINING_DIMENSION", 3))), "[0].production.defects: 유형별 합(3)");
+        assertInvalid(withDefects(new HashMap<>(Map.of("MACHINING_DIMENSION", -1))), "[0].production.defects.MACHINING_DIMENSION");
+        assertInvalid(withDefects(new HashMap<>(Map.of("MACHINING_DIMENSION", 0.5))), "[0].production.defects.MACHINING_DIMENSION");
+        assertInvalid(withDefects(new HashMap<>(Map.of(" ", 1))), "[0].production.defects: 빈 유형 코드");
+        Map<String, Object> notObject = item("CNC_01", 3);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> production = (Map<String, Object>) notObject.get("production");
+        production.put("defects", List.of("MACHINING_DIMENSION"));
+        assertInvalid(notObject, "[0].production.defects");
+
+        assertThat(insertedLogs).isEmpty();
+        assertThat(defectRows).isEmpty();
     }
 
     private void assertInvalid(Map<String, Object> item, String expectedPath) {

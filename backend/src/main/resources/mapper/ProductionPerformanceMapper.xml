@@ -51,4 +51,42 @@
         WHERE production_performance.total_count &lt;= EXCLUDED.total_count
     </insert>
 
+    <!-- insertEvents와 같은 방식: 유형별 저장값보다 늘어난 만큼 한 행. 같거나 작은 값은 넣지 않는다 -->
+    <insert id="insertDefectEvents">
+        INSERT INTO defect_event (work_order_id, equipment_id, defect_code, occurred_at, qty)
+        SELECT
+            v.work_order_id,
+            v.equipment_id,
+            v.defect_code,
+            v.occurred_at,
+            v.defect_count - COALESCE(d.defect_count, 0)
+        FROM (VALUES
+        <foreach collection="rows" item="row" separator=",">
+            (
+                CAST(#{row.workOrderId} AS VARCHAR),
+                CAST(#{row.equipmentId} AS VARCHAR),
+                CAST(#{row.defectCode} AS VARCHAR),
+                CAST(#{row.occurredAt} AS TIMESTAMPTZ),
+                CAST(#{row.defectCount} AS INT)
+            )
+        </foreach>
+        ) AS v (work_order_id, equipment_id, defect_code, occurred_at, defect_count)
+        LEFT JOIN production_defect d
+               ON d.work_order_id = v.work_order_id AND d.equipment_id = v.equipment_id AND d.defect_code = v.defect_code
+        WHERE v.defect_count &gt; COALESCE(d.defect_count, 0)
+    </insert>
+
+    <insert id="upsertDefects">
+        INSERT INTO production_defect (work_order_id, equipment_id, defect_code, defect_count, last_updated_at)
+        VALUES
+        <foreach collection="rows" item="row" separator=",">
+            (#{row.workOrderId}, #{row.equipmentId}, #{row.defectCode}, #{row.defectCount}, now())
+        </foreach>
+        ON CONFLICT (work_order_id, equipment_id, defect_code) DO UPDATE SET
+            defect_count    = EXCLUDED.defect_count,
+            last_updated_at = now()
+        <!-- 누적은 줄지 않는다(늦게 온 옛 요청) -->
+        WHERE production_defect.defect_count &lt;= EXCLUDED.defect_count
+    </insert>
+
 </mapper>

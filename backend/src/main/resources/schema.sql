@@ -29,6 +29,29 @@ INSERT INTO equipment (equipment_id, equipment_name, work_center_name, line_orde
     ('PACKER_01', '포장기 #1', '포장', 5, 25)
 ON CONFLICT (equipment_id) DO NOTHING;
 
+-- 불량 유형: 설비마다 나올 수 있는 유형이 다르다(3단계 품질). 시뮬레이터가 고르는 비중은 시뮬레이터에만 둔다
+CREATE TABLE IF NOT EXISTS defect_type (
+    defect_code   VARCHAR(50) PRIMARY KEY,
+    equipment_id  VARCHAR(50) NOT NULL REFERENCES equipment (equipment_id),
+    defect_name   VARCHAR(100) NOT NULL,
+    display_order INT NOT NULL,
+    -- 실적 쪽 외래 키가 (설비, 유형) 쌍을 걸어 다른 설비의 유형 코드를 막는다
+    CONSTRAINT uq_defect_type_equipment UNIQUE (equipment_id, defect_code)
+);
+
+INSERT INTO defect_type (defect_code, equipment_id, defect_name, display_order) VALUES
+    ('MACHINING_DIMENSION', 'CNC_01', '가공 치수 불량', 1),
+    ('MACHINING_SURFACE', 'CNC_01', '가공면 흠집', 2),
+    ('WINDING_RESISTANCE', 'WINDER_01', '권선 저항 불량', 3),
+    ('WINDING_INSULATION', 'WINDER_01', '절연 불량', 4),
+    ('ASSEMBLY_FASTENING', 'ASSEMBLY_01', '조립 체결 불량', 5),
+    ('ASSEMBLY_MISSING_PART', 'ASSEMBLY_01', '부품 누락', 6),
+    ('INSPECTION_PERFORMANCE', 'INSPECTION_01', '성능 미달', 7),
+    ('INSPECTION_NOISE', 'INSPECTION_01', '소음 · 진동 불량', 8),
+    ('PACKING_APPEARANCE', 'PACKER_01', '포장 외관 불량', 9),
+    ('PACKING_LABEL', 'PACKER_01', '라벨 불량', 10)
+ON CONFLICT (defect_code) DO NOTHING;
+
 -- ── 작업지시 ─────────────────────────────────────────────
 
 -- 작업지시: PLANNED(계획) → RELEASED(하달) → IN_PROGRESS(진행) → COMPLETED(완료), HELD(보류)
@@ -101,6 +124,31 @@ CREATE TABLE IF NOT EXISTS production_event (
 
 CREATE INDEX IF NOT EXISTS production_event_occurred_at_idx ON production_event (occurred_at);
 CREATE INDEX IF NOT EXISTS production_event_work_order_idx ON production_event (work_order_id, occurred_at);
+
+-- 유형별 불량 실적: (작업지시, 설비, 유형)마다 최신 누적 수 한 행. 시뮬레이터가 다시 시작할 때 이어 셀 값이다
+CREATE TABLE IF NOT EXISTS production_defect (
+    work_order_id   VARCHAR(50) NOT NULL REFERENCES work_order (work_order_id),
+    equipment_id    VARCHAR(50) NOT NULL,
+    defect_code     VARCHAR(50) NOT NULL,
+    defect_count    INT NOT NULL CHECK (defect_count >= 0),
+    last_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (work_order_id, equipment_id, defect_code),
+    FOREIGN KEY (equipment_id, defect_code) REFERENCES defect_type (equipment_id, defect_code)
+);
+
+-- 불량 이벤트: 유형별 누적이 늘어날 때마다 늘어난 만큼 한 행. 구간별 유형 수(파레토)를 세는 데 쓴다
+CREATE TABLE IF NOT EXISTS defect_event (
+    id            BIGSERIAL PRIMARY KEY,
+    work_order_id VARCHAR(50) NOT NULL REFERENCES work_order (work_order_id),
+    equipment_id  VARCHAR(50) NOT NULL,
+    defect_code   VARCHAR(50) NOT NULL,
+    occurred_at   TIMESTAMPTZ NOT NULL,
+    qty           INT NOT NULL CHECK (qty > 0),
+    FOREIGN KEY (equipment_id, defect_code) REFERENCES defect_type (equipment_id, defect_code)
+);
+
+CREATE INDEX IF NOT EXISTS defect_event_occurred_at_idx ON defect_event (occurred_at);
+CREATE INDEX IF NOT EXISTS defect_event_work_order_idx ON defect_event (work_order_id, occurred_at);
 
 -- 대시보드 조회용 인덱스. 최신 1건 · 최근 n분 추이 · 상태 비율 · 상태 변경 이력이 모두 "최근 시간 범위"를 읽는다.
 -- 설비 5대 기준 실험에서 recorded_at 단일이 조회 4개를 모두 5ms 안에 끝냈고, 복합 인덱스보다 3배 작았다

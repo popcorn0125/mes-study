@@ -1,4 +1,4 @@
-import type { ProducerEquipment, Range } from './equipment'
+import type { DefectWeight, ProducerEquipment, Range } from './equipment'
 
 /** RUN: 가동, WARN: 경고, DOWN: 고장/정지, IDLE: 대기(만들 것이 없음) */
 export type SensorStatus = 'RUN' | 'WARN' | 'DOWN' | 'IDLE'
@@ -12,6 +12,8 @@ export interface ProductionCount {
   totalCount: number
   goodCount: number
   badCount: number
+  /** 유형 코드별 누적 불량 수. 합은 badCount 이하(이 기능 전에 난 불량은 유형이 없다) */
+  defects: Readonly<Record<string, number>>
 }
 
 /** 전송 페이로드 한 건(설비 1대). 진행 중 작업지시가 없으면 workOrderId · production을 뺀다 */
@@ -56,7 +58,7 @@ export const METRIC_STEP_RATIO = 0.05
 
 const round1 = (value: number) => Math.round(value * 10) / 10
 
-export const ZERO_COUNT: ProductionCount = { totalCount: 0, goodCount: 0, badCount: 0 }
+export const ZERO_COUNT: ProductionCount = { totalCount: 0, goodCount: 0, badCount: 0, defects: {} }
 
 /** 범위 가운데 값, 대기(IDLE)에서 시작한다. 수량은 서버에 저장된 값이 있으면 그 값부터 */
 export function initialState(eq: ProducerEquipment, production: ProductionCount = ZERO_COUNT): EquipmentState {
@@ -72,6 +74,16 @@ export function initialState(eq: ProducerEquipment, production: ProductionCount 
   }
 }
 
+/** 비중대로 유형 하나를 고른다(r은 0 이상 1 미만). 소수 오차로 끝까지 가면 마지막 유형 */
+export function pickDefect(types: readonly DefectWeight[], r: number): string {
+  let sum = 0
+  for (const type of types) {
+    sum += type.weight
+    if (r < sum) return type.code
+  }
+  return types[types.length - 1].code
+}
+
 /** 직전 값에서 범위 폭의 ±METRIC_STEP_RATIO 안으로 움직이고, 범위를 벗어나지 않는다(소수점 첫째 자리) */
 export function driftIn(value: number, [min, max]: Range, random: Random): number {
   const step = (max - min) * METRIC_STEP_RATIO * (random() * 2 - 1)
@@ -83,7 +95,7 @@ export function driftIn(value: number, [min, max]: Range, random: Random): numbe
  * - WARN · DOWN은 남은 시간이 다하면 끝난다.
  * - 가공 중이 아니고 supply가 있으면 1개를 투입한다. DOWN 동안은 투입도 가공도 멈춘다.
  * - 가공 중이면 가동 시간이 흐르고, 택트 타임에 이르면 1개를 완성한다(95% 양품, 5% 불량).
- *   불량이 나면 WARN 또는 DOWN(반반)으로 3~5초 바뀐다.
+ *   불량이 나면 설비의 유형 중 하나를 비중대로 골라 세고, WARN 또는 DOWN(반반)으로 3~5초 바뀐다.
  * - WARN 동안은 느리게 가공한다(1초에 WARN_SPEED초분).
  * - 경고 · 고장 없이 가공 중이면 가끔(SLOWDOWN_CHANCE) 30~60초짜리 속도 저하 경고(WARN)가 시작된다.
  * - 경고 · 고장이 아니면 가공 중일 때 RUN, 만들 것이 없으면 IDLE이다.
@@ -118,11 +130,15 @@ export function step(eq: ProducerEquipment, prev: EquipmentState, random: Random
           totalCount: production.totalCount + 1,
           goodCount: production.goodCount + (bad ? 0 : 1),
           badCount: production.badCount + (bad ? 1 : 0),
+          defects: production.defects,
         }
         if (bad) {
           alert = random() < 0.5 ? 'WARN' : 'DOWN'
           const [min, max] = ALERT_SECONDS
           statusRemaining = min + Math.floor(random() * (max - min + 1))
+          // 유형은 경고 종류 · 시간 다음에 고른다(앞의 난수 순서를 바꾸지 않게)
+          const code = pickDefect(eq.defectTypes, random())
+          production.defects = { ...production.defects, [code]: (production.defects[code] ?? 0) + 1 }
         }
       }
     }

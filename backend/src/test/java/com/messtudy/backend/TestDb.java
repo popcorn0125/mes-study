@@ -11,9 +11,9 @@ public final class TestDb {
     private TestDb() {
     }
 
-    /** 작업지시 · 실적 · 센서 로그 · 시뮬레이터 실행을 비운다 */
+    /** 작업지시 · 실적(수량 · 불량 유형) · 이벤트 · 센서 로그 · 시뮬레이터 실행을 비운다 */
     public static void reset(JdbcTemplate jdbc) {
-        jdbc.execute("TRUNCATE equipment_sensor_log, production_event, production_performance, work_order, producer_run RESTART IDENTITY");
+        jdbc.execute("TRUNCATE equipment_sensor_log, defect_event, production_defect, production_event, production_performance, work_order, producer_run RESTART IDENTITY");
     }
 
     /** 비운 뒤 실적이 참조할 작업지시(WORK_ORDER_ID, 진행 중) 하나를 넣는다 */

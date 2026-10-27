@@ -98,6 +98,43 @@ class SensorLogServiceDbTest {
                 .containsExactly("CNC_01=" + TestDb.WORK_ORDER_ID, "WINDER_01=null");
     }
 
+    private static Map<String, Object> withDefects(String equipmentId, int bad, Map<String, Object> defects) {
+        return Map.of(
+                "equipmentId", equipmentId,
+                "timestamp", "2026-10-24T23:37:12.451Z",
+                "status", "RUN",
+                "workOrderId", TestDb.WORK_ORDER_ID,
+                "metrics", Map.of("temperature", 49.4, "vibration", 2.8),
+                "production", Map.of("totalCount", 10, "goodCount", 10 - bad, "badCount", bad, "defects", defects));
+    }
+
+    @Test
+    void 유형별_누적이_늘어난_만큼만_불량_이벤트가_생기고_줄어든_값으로는_덮지_않는다() {
+        service.save(List.of(withDefects("CNC_01", 1, Map.of("MACHINING_DIMENSION", 1))));
+        service.save(List.of(withDefects("CNC_01", 1, Map.of("MACHINING_DIMENSION", 1))));                          // 그대로
+        service.save(List.of(withDefects("CNC_01", 4, Map.of("MACHINING_DIMENSION", 3, "MACHINING_SURFACE", 1))));  // +2, +1
+        service.save(List.of(withDefects("CNC_01", 4, Map.of("MACHINING_DIMENSION", 2, "MACHINING_SURFACE", 1))));  // 늦게 온 옛 값
+
+        assertThat(jdbc.queryForList("SELECT defect_code, qty FROM defect_event ORDER BY id"))
+                .extracting(r -> r.get("defect_code") + "+" + r.get("qty"))
+                .containsExactly("MACHINING_DIMENSION+1", "MACHINING_DIMENSION+2", "MACHINING_SURFACE+1");
+        assertThat(jdbc.queryForList("SELECT defect_code, defect_count FROM production_defect ORDER BY defect_code"))
+                .extracting(r -> r.get("defect_code") + "=" + r.get("defect_count"))
+                .containsExactly("MACHINING_DIMENSION=3", "MACHINING_SURFACE=1");
+    }
+
+    @Test
+    void 다른_설비의_유형이나_없는_유형은_전체를_저장하지_않는다() {
+        assertThatThrownBy(() -> service.save(List.of(withDefects("CNC_01", 1, Map.of("PACKING_LABEL", 1)))))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> service.save(List.of(withDefects("CNC_01", 1, Map.of("NO_SUCH_DEFECT", 1)))))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThat(count("equipment_sensor_log")).isZero();
+        assertThat(count("production_performance")).isZero();
+        assertThat(count("defect_event")).isZero();
+    }
+
     @Test
     void 실적_저장이_실패하면_센서_로그도_저장되지_않는다() {
         // 센서 로그는 설비 외래 키가 없어 들어가고, 뒤의 생산 이벤트 · 실적 저장이 없는 설비라 실패한다

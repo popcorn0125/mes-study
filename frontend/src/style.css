@@ -1154,3 +1154,61 @@ body,
   line-height: 1.5;
   color: #8b949e;
 }
+
+/* ── 품질 ───────────────────────── */
+.quality-head {
+  flex-wrap: wrap;
+}
+.quality-head h2 span {
+  margin-left: 6px;
+  font-weight: 400;
+}
+.quality-table {
+  min-width: 560px;
+}
+.pareto {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pareto__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.2fr) minmax(60px, 2fr) auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #c9d1d9;
+}
+.pareto__name small {
+  display: block;
+  font-size: 11px;
+  color: #8b949e;
+}
+.pareto__track {
+  height: 10px;
+  overflow: hidden;
+  background: #21262d;
+  border-radius: 4px;
+}
+.pareto__track > span {
+  display: block;
+  height: 100%;
+  background: #d95926;
+  border-radius: 4px;
+}
+.pareto__value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #8b949e;
+}
+.pareto__row--vital .pareto__name,
+.pareto__row--vital .pareto__value {
+  font-weight: 600;
+  color: #e6edf3;
+}
+.pareto__row--unclassified .pareto__track > span {
+  background: #6e7681;
+}

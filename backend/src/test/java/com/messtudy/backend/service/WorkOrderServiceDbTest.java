@@ -69,7 +69,8 @@ class WorkOrderServiceDbTest {
         List<Map<String, Object>> performance = (List<Map<String, Object>>) first.get("performance");
         assertThat(performance).extracting(row -> row.get("equipmentId"))
                 .containsExactly("CNC_01", "WINDER_01", "ASSEMBLY_01", "INSPECTION_01", "PACKER_01");
-        assertThat(performance.get(0)).containsEntry("totalCount", 0).containsEntry("standardTactSec", 45);
+        assertThat(performance.get(0)).containsEntry("totalCount", 0).containsEntry("standardTactSec", 45)
+                .containsEntry("defects", Map.of());
     }
 
     @Test
@@ -176,6 +177,20 @@ class WorkOrderServiceDbTest {
 
         assertThatThrownBy(() -> jdbc.update("UPDATE work_order SET status = 'IN_PROGRESS' WHERE work_order_id = ?", b))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void 상세의_설비별_실적에_유형별_누적_불량이_붙는다() {
+        String id = create(5);
+        jdbc.update("INSERT INTO production_defect (work_order_id, equipment_id, defect_code, defect_count) VALUES "
+                + "(?, 'ASSEMBLY_01', 'ASSEMBLY_FASTENING', 2), (?, 'ASSEMBLY_01', 'ASSEMBLY_MISSING_PART', 1)", id, id);
+
+        List<Map<String, Object>> performance = (List<Map<String, Object>>) service.findById(id).get("performance");
+
+        assertThat(performance.get(2)).containsEntry("equipmentId", "ASSEMBLY_01")
+                .containsEntry("defects", Map.of("ASSEMBLY_FASTENING", 2, "ASSEMBLY_MISSING_PART", 1));
+        assertThat(performance.get(0)).containsEntry("defects", Map.of());
     }
 
     private void assertInvalid(Map<String, Object> body, String key) {

@@ -37,6 +37,8 @@ export interface EquipmentPerformance {
   totalCount: number
   goodCount: number
   badCount: number
+  /** 유형 코드별 누적 불량 수(시뮬레이터가 이어 셀 때 쓴다) */
+  defects: Record<string, number>
 }
 
 /** 작업지시 상세(GET /work-orders/{id}, /work-orders/current) */

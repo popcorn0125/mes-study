@@ -6,7 +6,7 @@ import java.util.Map;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-/** 작업 실적(production_performance)과 생산 이벤트(production_event) */
+/** 작업 실적(production_performance) · 생산 이벤트(production_event), 유형별 불량 실적(production_defect) · 불량 이벤트(defect_event) */
 @Mapper
 public interface ProductionPerformanceMapper {
 
@@ -27,4 +27,20 @@ public interface ProductionPerformanceMapper {
      * @return 추가 · 갱신된 행 수(역전 방지로 건너뛴 행은 세지 않는다)
      */
     int upsertAll(@Param("rows") List<Map<String, Object>> rows);
+
+    /**
+     * 저장된 유형별 누적 불량보다 늘어난 만큼을 불량 이벤트(defect_event)로 넣는다. upsertDefects 전에 부른다.
+     * 행 키: workOrderId, equipmentId, defectCode, defectCount, occurredAt
+     *
+     * @return 넣은 이벤트 수
+     */
+    int insertDefectEvents(@Param("rows") List<Map<String, Object>> rows);
+
+    /**
+     * (작업지시, 설비, 유형)마다 최신 누적 불량 수를 UPSERT한다. 지금 값보다 작은 값으로는 덮어쓰지 않는다.
+     * 행 키는 insertDefectEvents와 같다. 한 번에 같은 키가 두 번 들어오면 안 된다.
+     *
+     * @return 추가 · 갱신된 행 수
+     */
+    int upsertDefects(@Param("rows") List<Map<String, Object>> rows);
 }

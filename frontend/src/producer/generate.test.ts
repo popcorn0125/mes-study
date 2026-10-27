@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createRng } from './rng'
 import { PRODUCER_EQUIPMENT, type ProducerEquipment } from './equipment'
-import { driftIn, initialState, step, toLog, type EquipmentState, type Random } from './generate'
+import { driftIn, initialState, pickDefect, step, toLog, type EquipmentState, type Random } from './generate'
 
 const CNC = PRODUCER_EQUIPMENT[0]
 /** 가운데 값(0.5)이면 측정값이 움직이지 않는다 */
@@ -27,9 +27,9 @@ describe('더미 센서 데이터', () => {
       inProcess: false,
       tactElapsed: 0,
       metrics: { temperature: 49, vibration: 2.5 },
-      production: { totalCount: 0, goodCount: 0, badCount: 0 },
+      production: { totalCount: 0, goodCount: 0, badCount: 0, defects: {} },
     })
-    expect(initialState(CNC, { totalCount: 7, goodCount: 6, badCount: 1 }).production).toEqual({ totalCount: 7, goodCount: 6, badCount: 1 })
+    expect(initialState(CNC, { totalCount: 7, goodCount: 6, badCount: 1, defects: { MACHINING_SURFACE: 1 } }).production).toEqual({ totalCount: 7, goodCount: 6, badCount: 1, defects: { MACHINING_SURFACE: 1 } })
   })
 
   it('측정값은 1초에 범위 폭의 5% 안에서 움직이고, 범위를 벗어나지 않는다', () => {
@@ -52,9 +52,9 @@ describe('더미 센서 데이터', () => {
 
   it('택트 타임 사이에는 수량을 그대로 두고, 택트 타임마다 1개를 완성한다', () => {
     const before = run(CNC, initialState(CNC), CNC.tactTime - 1)
-    expect(before.production).toEqual({ totalCount: 0, goodCount: 0, badCount: 0 })
+    expect(before.production).toEqual({ totalCount: 0, goodCount: 0, badCount: 0, defects: {} })
     const first = step(CNC, before, steady, Infinity)
-    expect(first.production).toEqual({ totalCount: 1, goodCount: 1, badCount: 0 })
+    expect(first.production).toEqual({ totalCount: 1, goodCount: 1, badCount: 0, defects: {} })
     expect(first.status).toBe('RUN')
     expect(run(CNC, first, CNC.tactTime - 1).production.totalCount).toBe(1)
     expect(run(CNC, first, CNC.tactTime).production.totalCount).toBe(2)
@@ -80,7 +80,7 @@ describe('더미 센서 데이터', () => {
     const before = run(CNC, initialState(CNC), CNC.tactTime - 1)
     // 불량(0.01 < 5%) → WARN(0.2 < 0.5) → 3초(0)
     const warn = step(CNC, before, queue(0.01, 0.2, 0), Infinity)
-    expect(warn.production).toEqual({ totalCount: 1, goodCount: 0, badCount: 1 })
+    expect(warn.production).toEqual({ totalCount: 1, goodCount: 0, badCount: 1, defects: { MACHINING_DIMENSION: 1 } })
     expect(warn.status).toBe('WARN')
     expect(run(CNC, warn, 2).status).toBe('WARN')
     expect(run(CNC, warn, 3).status).toBe('RUN')
@@ -126,6 +126,34 @@ describe('더미 센서 데이터', () => {
     expect(idle.status).toBe('IDLE')
   })
 
+  it('불량 유형은 설비의 유형 중 비중대로 고르고, 저장된 유형별 수에 이어 센다', () => {
+    const types = CNC.defectTypes
+    expect(pickDefect(types, 0)).toBe('MACHINING_DIMENSION')
+    expect(pickDefect(types, 0.59)).toBe('MACHINING_DIMENSION')
+    expect(pickDefect(types, 0.6)).toBe('MACHINING_SURFACE')
+    expect(pickDefect(types, 0.9999999)).toBe('MACHINING_SURFACE')
+
+    const saved = { totalCount: 7, goodCount: 6, badCount: 1, defects: { MACHINING_SURFACE: 1 } }
+    const before = run(CNC, initialState(CNC, saved), CNC.tactTime - 1)
+    // 불량(0.01) → WARN(0.2) → 3초(0) → 가공면 흠집(0.8)
+    const bad = step(CNC, before, queue(0.01, 0.2, 0, 0.8), Infinity)
+    expect(bad.production).toEqual({ totalCount: 8, goodCount: 6, badCount: 2, defects: { MACHINING_SURFACE: 2 } })
+    expect(saved.defects).toEqual({ MACHINING_SURFACE: 1 }) // 저장값 객체는 건드리지 않는다
+  })
+
+  it('모든 설비의 유형 비중 합은 1이고, 오래 돌리면 유형별 합이 불량 수와 같다', () => {
+    for (const eq of PRODUCER_EQUIPMENT) {
+      expect(eq.defectTypes.reduce((sum, t) => sum + t.weight, 0)).toBeCloseTo(1)
+    }
+    const random = createRng(7)
+    let state = initialState(CNC)
+    for (let i = 0; i < 20_000; i++) state = step(CNC, state, random, Infinity)
+    const { badCount, defects } = state.production
+    expect(badCount).toBeGreaterThan(0)
+    expect(Object.values(defects).reduce((sum, n) => sum + n, 0)).toBe(badCount)
+    expect(Object.keys(defects).every((code) => CNC.defectTypes.some((t) => t.code === code))).toBe(true)
+  })
+
   it('불량률은 약 5%다', () => {
     let state = initialState(CNC)
     state = run(CNC, state, CNC.tactTime * 4000, createRng(2026))
@@ -150,7 +178,7 @@ describe('더미 센서 데이터', () => {
       status: 'IDLE',
       workOrderId: 'WO-20261024-001',
       metrics: { temperature: 49, vibration: 2.5 },
-      production: { totalCount: 0, goodCount: 0, badCount: 0 },
+      production: { totalCount: 0, goodCount: 0, badCount: 0, defects: {} },
     })
   })
 })

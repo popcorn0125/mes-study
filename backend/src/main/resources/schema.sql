@@ -84,6 +84,24 @@ CREATE TABLE IF NOT EXISTS production_performance (
     CONSTRAINT uq_work_equipment UNIQUE (work_order_id, equipment_id)
 );
 
+-- 센서 로그를 받을 때 진행 중이던 작업지시(없으면 NULL). OEE의 계획 가동 시간 = 작업지시가 있던 초.
+-- 2026-10 OEE 때 추가했다. 기존 DB도 서버를 다시 켜면 열이 생기고, 그 전 로그는 NULL이라 계획 가동 시간에서 빠진다.
+-- 1초마다 쌓이는 테이블이라 외래 키는 걸지 않는다
+ALTER TABLE equipment_sensor_log ADD COLUMN IF NOT EXISTS work_order_id VARCHAR(50);
+
+-- 생산 이벤트: 실적(누적값)이 늘어날 때마다 늘어난 만큼 한 행. 구간(오늘 · 최근 n시간 · 시간대별) 생산 수를 세는 데 쓴다
+CREATE TABLE IF NOT EXISTS production_event (
+    id            BIGSERIAL PRIMARY KEY,
+    work_order_id VARCHAR(50) NOT NULL REFERENCES work_order (work_order_id),
+    equipment_id  VARCHAR(50) NOT NULL REFERENCES equipment (equipment_id),
+    occurred_at   TIMESTAMPTZ NOT NULL,
+    good_qty      INT NOT NULL CHECK (good_qty >= 0),
+    bad_qty       INT NOT NULL CHECK (bad_qty >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS production_event_occurred_at_idx ON production_event (occurred_at);
+CREATE INDEX IF NOT EXISTS production_event_work_order_idx ON production_event (work_order_id, occurred_at);
+
 -- 대시보드 조회용 인덱스. 최신 1건 · 최근 n분 추이 · 상태 비율 · 상태 변경 이력이 모두 "최근 시간 범위"를 읽는다.
 -- 설비 5대 기준 실험에서 recorded_at 단일이 조회 4개를 모두 5ms 안에 끝냈고, 복합 인덱스보다 3배 작았다
 -- (복합은 설비 조건이 없는 상태 비율 조회에 쓰이지 않는다). 근거: docs/experiments/sensor-log-index/README.md

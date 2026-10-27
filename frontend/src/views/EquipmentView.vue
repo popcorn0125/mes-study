@@ -2,6 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchRecentLogs, fetchStatusChanges, fetchStatusSummary } from '@/api/dashboard'
+import { fetchOee } from '@/api/oee'
+import OeeBreakdown from '@/dashboard/OeeBreakdown.vue'
+import OeeRangePicker from '@/dashboard/OeeRangePicker.vue'
+import { useOeeRange } from '@/dashboard/oee'
 import { useNow } from '@/composables/useNow'
 import { usePolling } from '@/composables/usePolling'
 import { useLatestLogs } from '@/dashboard/latestLogs'
@@ -79,7 +83,16 @@ const temperaturePoints = computed(() => (trendRows.value ?? []).map((r) => [Dat
 const vibrationPoints = computed(() => (trendRows.value ?? []).map((r) => [Date.parse(r.recordedAt), r.vibration] as const))
 const trendFrom = computed(() => now.value - TREND_MINUTES * 60_000)
 
-const error = computed(() => latest.error.value ?? summary.error.value ?? trend.error.value ?? changes.error.value)
+/** 설비별 OEE. 구간은 생산 현황과 같이 쓰고, 어느 구간 응답인지 함께 들고 온다 */
+const oeeRange = useOeeRange()
+const oee = usePolling(async () => {
+  const range = oeeRange.value
+  return { range, summary: await fetchOee(range) }
+})
+watch(oeeRange, () => void oee.refresh())
+const oeeEquipment = computed(() => (oee.data.value?.range === oeeRange.value ? oee.data.value.summary.equipment : undefined))
+
+const error = computed(() => latest.error.value ?? summary.error.value ?? oee.error.value ?? trend.error.value ?? changes.error.value)
 </script>
 
 <template>
@@ -100,6 +113,23 @@ const error = computed(() => latest.error.value ?? summary.error.value ?? trend.
         :selected="card.equipment.id === selectedId"
         :now="now"
         @select="selectedId = $event"
+      />
+    </section>
+
+    <section class="dash-card">
+      <header class="dash-card__header">
+        <h2>설비별 OEE</h2>
+        <OeeRangePicker v-model="oeeRange" />
+      </header>
+      <p
+        v-if="oeeEquipment === undefined"
+        class="dash-empty"
+      >
+        {{ oee.loading.value ? '불러오는 중…' : 'OEE를 받지 못했습니다.' }}
+      </p>
+      <OeeBreakdown
+        v-else
+        :equipment="oeeEquipment"
       />
     </section>
 
@@ -152,8 +182,8 @@ const error = computed(() => latest.error.value ?? summary.error.value ?? trend.
     <div class="eq-bottom">
       <section class="dash-card">
         <header class="dash-card__header">
-          <h2>설비별 가동률</h2>
-          <span>최근 {{ STATUS_MINUTES }}분 · 로그 1건 = 1초</span>
+          <h2>설비별 상태 비율</h2>
+          <span>최근 {{ STATUS_MINUTES }}분 · 작업지시 없는 대기 포함 · 로그 1건 = 1초</span>
         </header>
         <p
           v-if="summary.data.value === undefined"

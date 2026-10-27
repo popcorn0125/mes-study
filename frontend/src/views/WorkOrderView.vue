@@ -12,6 +12,9 @@ import {
   type WorkOrderDetail,
   type WorkOrderStatus,
 } from '@/api/workOrders'
+import { fetchWorkOrderOee } from '@/api/oee'
+import OeeBreakdown from '@/dashboard/OeeBreakdown.vue'
+import { explainLine, formatRatio } from '@/dashboard/oee'
 import { useNow } from '@/composables/useNow'
 import { usePolling } from '@/composables/usePolling'
 import ConnectionNotice from '@/dashboard/ConnectionNotice.vue'
@@ -66,6 +69,14 @@ const selected = computed<WorkOrderDetail | undefined>(() =>
   detail.data.value?.id === selectedId.value ? detail.data.value?.data : undefined,
 )
 const stages = computed(() => (selected.value ? toStages(selected.value) : []))
+
+/** 선택한 지시의 OEE(그 지시가 진행 중이던 시간만). 상세와 같은 이유로 어느 지시 응답인지 들고 온다 */
+const oee = usePolling(async () => {
+  const id = selectedId.value
+  return id ? { id, data: await fetchWorkOrderOee(id) } : undefined
+})
+watch(selectedId, () => void oee.refresh())
+const selectedOee = computed(() => (oee.data.value?.id === selectedId.value ? oee.data.value?.data : undefined))
 const eta = computed(() => (selected.value ? estimateFinish(selected.value, now.value) : undefined))
 
 const showForm = ref(false)
@@ -321,6 +332,29 @@ const numberFormat = new Intl.NumberFormat('ko-KR')
           </p>
         </li>
       </ol>
+
+      <h3 class="wo-subtitle">
+        OEE <small>이 작업지시가 진행 중이던 시간만{{ selected.status === 'IN_PROGRESS' ? ' · 지금까지' : '' }}</small>
+      </h3>
+      <p
+        v-if="!selectedOee"
+        class="dash-empty"
+      >
+        {{ oee.loading.value ? '불러오는 중…' : 'OEE를 받지 못했습니다.' }}
+      </p>
+      <p
+        v-else-if="selectedOee.line.plannedSec === 0"
+        class="dash-empty"
+      >
+        아직 생산한 시간이 없습니다.
+      </p>
+      <template v-else>
+        <div class="oee-line oee-line--small">
+          <strong class="oee-line__value">{{ formatRatio(selectedOee.line.oee) }}</strong>
+          <span class="oee-line__explain">라인 OEE · {{ explainLine(selectedOee.line) }}</span>
+        </div>
+        <OeeBreakdown :equipment="selectedOee.equipment" />
+      </template>
     </section>
   </div>
 </template>

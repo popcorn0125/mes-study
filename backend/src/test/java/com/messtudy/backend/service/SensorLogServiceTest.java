@@ -25,9 +25,24 @@ class SensorLogServiceTest {
         insertedLogs.addAll(logs);
         return logs.size();
     };
-    private final ProductionPerformanceMapper productionMapper = rows -> {
-        upsertedRows.addAll(rows);
-        return rows.size();
+    private final List<Map<String, Object>> eventRows = new ArrayList<>();
+    /** 매퍼를 부른 순서 */
+    private final List<String> calls = new ArrayList<>();
+
+    private final ProductionPerformanceMapper productionMapper = new ProductionPerformanceMapper() {
+        @Override
+        public int insertEvents(List<Map<String, Object>> rows) {
+            calls.add("insertEvents");
+            eventRows.addAll(rows);
+            return rows.size();
+        }
+
+        @Override
+        public int upsertAll(List<Map<String, Object>> rows) {
+            calls.add("upsertAll");
+            upsertedRows.addAll(rows);
+            return rows.size();
+        }
     };
     private final SensorLogService service = new SensorLogService(sensorLogMapper, productionMapper);
 
@@ -53,11 +68,13 @@ class SensorLogServiceTest {
                 "equipmentId", "CNC_01",
                 "recordedAt", OffsetDateTime.parse("2026-10-24T23:37:12.451Z"),
                 "status", "RUN",
+                "workOrderId", "WO-20261024-001",
                 "temperature", new BigDecimal("82.4"),
                 "vibration", new BigDecimal("1.2")));
         assertThat(upsertedRows.get(0)).isEqualTo(Map.of(
                 "workOrderId", "WO-20261024-001",
                 "equipmentId", "CNC_01",
+                "occurredAt", OffsetDateTime.parse("2026-10-24T23:37:12.451Z"),
                 "totalCount", 150,
                 "goodCount", 148,
                 "badCount", 2));
@@ -81,6 +98,15 @@ class SensorLogServiceTest {
     }
 
     @Test
+    void 생산_이벤트는_실적을_갱신하기_전에_같은_행으로_만든다() {
+        service.save(List.of(item("CNC_01", 150), item("WINDER_01", 120)));
+
+        // 이벤트 SQL은 저장값(직전 누적)과 비교하므로 UPSERT보다 먼저여야 한다
+        assertThat(calls).containsExactly("insertEvents", "upsertAll");
+        assertThat(eventRows).isEqualTo(upsertedRows);
+    }
+
+    @Test
     void 작업지시가_없는_항목은_센서_로그만_저장한다() {
         Map<String, Object> idle = item("CNC_01", 0);
         idle.put("status", "IDLE");
@@ -90,7 +116,7 @@ class SensorLogServiceTest {
         Map<String, Integer> result = service.save(List.of(idle, item("WINDER_01", 3)));
 
         assertThat(result).isEqualTo(Map.of("sensorLogs", 2, "productions", 1));
-        assertThat(insertedLogs.get(0)).containsEntry("status", "IDLE");
+        assertThat(insertedLogs.get(0)).containsEntry("status", "IDLE").containsEntry("workOrderId", null);
         assertThat(upsertedRows).extracting(row -> row.get("equipmentId")).containsExactly("WINDER_01");
     }
 

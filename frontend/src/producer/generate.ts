@@ -45,6 +45,12 @@ export type Random = () => number
 export const BAD_RATE = 0.05
 /** 불량이 나면 WARN 또는 DOWN을 유지하는 시간(초): 3 ~ 5 */
 export const ALERT_SECONDS: Range = [3, 5]
+/** 경고(WARN) 중 1초에 진행하는 가공 시간(초). 택트가 약 1.33배로 늘어 OEE 성능 손실이 된다 */
+export const WARN_SPEED = 0.75
+/** 가공 중 1초마다 속도 저하 경고가 시작될 확률(평균 가공 300초에 한 번) */
+export const SLOWDOWN_CHANCE = 1 / 300
+/** 속도 저하 경고가 이어지는 시간(초): 30 ~ 60 */
+export const SLOWDOWN_SECONDS: Range = [30, 60]
 /** 측정값이 1초에 움직이는 최대 폭(정상 범위 폭에 대한 비율) */
 export const METRIC_STEP_RATIO = 0.05
 
@@ -78,6 +84,8 @@ export function driftIn(value: number, [min, max]: Range, random: Random): numbe
  * - 가공 중이 아니고 supply가 있으면 1개를 투입한다. DOWN 동안은 투입도 가공도 멈춘다.
  * - 가공 중이면 가동 시간이 흐르고, 택트 타임에 이르면 1개를 완성한다(95% 양품, 5% 불량).
  *   불량이 나면 WARN 또는 DOWN(반반)으로 3~5초 바뀐다.
+ * - WARN 동안은 느리게 가공한다(1초에 WARN_SPEED초분).
+ * - 경고 · 고장 없이 가공 중이면 가끔(SLOWDOWN_CHANCE) 30~60초짜리 속도 저하 경고(WARN)가 시작된다.
  * - 경고 · 고장이 아니면 가공 중일 때 RUN, 만들 것이 없으면 IDLE이다.
  * - 온도 · 진동은 매초 조금씩 움직인다.
  */
@@ -101,7 +109,7 @@ export function step(eq: ProducerEquipment, prev: EquipmentState, random: Random
       tactElapsed = 0
     }
     if (inProcess) {
-      tactElapsed += 1
+      tactElapsed += alert === 'WARN' ? WARN_SPEED : 1
       if (tactElapsed >= eq.tactTime) {
         inProcess = false
         tactElapsed = 0
@@ -117,6 +125,12 @@ export function step(eq: ProducerEquipment, prev: EquipmentState, random: Random
           statusRemaining = min + Math.floor(random() * (max - min + 1))
         }
       }
+    }
+    // 완성한 초에는 굴리지 않는다(불량 판정과 난수 순서가 섞이지 않게)
+    if (inProcess && !alert && random() < SLOWDOWN_CHANCE) {
+      alert = 'WARN'
+      const [min, max] = SLOWDOWN_SECONDS
+      statusRemaining = min + Math.floor(random() * (max - min + 1))
     }
   }
 

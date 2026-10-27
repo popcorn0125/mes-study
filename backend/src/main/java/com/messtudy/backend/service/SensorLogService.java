@@ -17,7 +17,8 @@ import com.messtudy.backend.mapper.SensorLogMapper;
 
 /**
  * 설비 데이터 한 묶음을 받아 센서 로그(metrics · status)와 생산 실적(production)으로 나눠 저장한다.
- * 두 저장은 한 트랜잭션이라, 한쪽이 실패하면 둘 다 저장되지 않는다.
+ * 실적이 늘었으면 늘어난 만큼 생산 이벤트도 남긴다(OEE 구간 생산 수).
+ * 모두 한 트랜잭션이라, 하나가 실패하면 아무것도 저장되지 않는다.
  */
 @Service
 public class SensorLogService {
@@ -33,7 +34,8 @@ public class SensorLogService {
     /**
      * @param payload 설비별 데이터 목록(equipmentId, timestamp, status, workOrderId, metrics, production).
      *                진행 중 작업지시가 없을 때는 workOrderId · production을 둘 다 뺀다
-     * @return 저장한 건수 {"sensorLogs": 넣은 센서 로그 수, "productions": 추가 · 갱신한 실적 수}
+     * @return 저장한 건수 {"sensorLogs": 넣은 센서 로그 수, "productions": 추가 · 갱신한 실적 수}.
+     *         생산 이벤트 수는 세지 않는다(실적 저장의 부산물)
      * @throws InvalidPayloadException 필수 값이 없거나 형식이 틀렸을 때(아무것도 저장하지 않는다)
      */
     @Transactional
@@ -62,8 +64,13 @@ public class SensorLogService {
         }
 
         int savedLogs = sensorLogMapper.insertAll(sensorLogs);
-        int savedProductions = productions.isEmpty() ? 0
-                : productionPerformanceMapper.upsertAll(new ArrayList<>(productions.values()));
+        int savedProductions = 0;
+        if (!productions.isEmpty()) {
+            List<Map<String, Object>> rows = new ArrayList<>(productions.values());
+            // 이벤트는 저장값과 비교해 만들므로 UPSERT로 저장값이 바뀌기 전에 넣는다
+            productionPerformanceMapper.insertEvents(rows);
+            savedProductions = productionPerformanceMapper.upsertAll(rows);
+        }
         return result(savedLogs, savedProductions);
     }
 
@@ -74,6 +81,8 @@ public class SensorLogService {
         log.put("equipmentId", requireText(item, "equipmentId", where));
         log.put("recordedAt", requireTimestamp(item, "timestamp", where));
         log.put("status", requireText(item, "status", where));
+        // 작업지시가 없으면(대기) null: 계획 가동 시간에서 빠진다
+        log.put("workOrderId", item.get("workOrderId") == null ? null : requireText(item, "workOrderId", where));
         log.put("temperature", optionalDecimal(metrics, "temperature", where + ".metrics"));
         log.put("vibration", optionalDecimal(metrics, "vibration", where + ".metrics"));
         return log;
@@ -85,6 +94,7 @@ public class SensorLogService {
         return Map.of(
                 "workOrderId", requireText(item, "workOrderId", where),
                 "equipmentId", requireText(item, "equipmentId", where),
+                "occurredAt", requireTimestamp(item, "timestamp", where),
                 "totalCount", requireCount(production, "totalCount", at),
                 "goodCount", requireCount(production, "goodCount", at),
                 "badCount", requireCount(production, "badCount", at));

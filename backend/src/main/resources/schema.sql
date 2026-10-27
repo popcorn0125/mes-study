@@ -1,4 +1,66 @@
--- 장비 센서 시계열 로그: 1초마다 계속 쌓인다
+-- ── 기준정보 ─────────────────────────────────────────────
+
+-- 품목: 라인에서 만드는 제품
+CREATE TABLE IF NOT EXISTS item (
+    item_code  VARCHAR(50) PRIMARY KEY,
+    item_name  VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 설비: 라인 순서대로 놓인 설비. 기준 택트는 2단계 OEE 성능 계산의 기준이 된다(시뮬레이터의 실제 택트와 다를 수 있다)
+CREATE TABLE IF NOT EXISTS equipment (
+    equipment_id      VARCHAR(50) PRIMARY KEY,
+    equipment_name    VARCHAR(100) NOT NULL,
+    work_center_name  VARCHAR(100) NOT NULL,
+    line_order        INT NOT NULL UNIQUE,
+    standard_tact_sec INT NOT NULL CHECK (standard_tact_sec > 0)
+);
+
+INSERT INTO item (item_code, item_name) VALUES
+    ('MOTOR_A', 'BLDC 모터 표준형 A'),
+    ('MOTOR_B', 'BLDC 모터 고출력형 B')
+ON CONFLICT (item_code) DO NOTHING;
+
+INSERT INTO equipment (equipment_id, equipment_name, work_center_name, line_order, standard_tact_sec) VALUES
+    ('CNC_01', 'CNC #1', '하우징 가공', 1, 45),
+    ('WINDER_01', '권선기 #1', '스테이터 권선', 2, 40),
+    ('ASSEMBLY_01', '조립 셀 #1', '조립', 3, 50),
+    ('INSPECTION_01', '검사기 #1', '검사', 4, 30),
+    ('PACKER_01', '포장기 #1', '포장', 5, 25)
+ON CONFLICT (equipment_id) DO NOTHING;
+
+-- ── 작업지시 ─────────────────────────────────────────────
+
+-- 작업지시: PLANNED(계획) → RELEASED(하달) → IN_PROGRESS(진행) → COMPLETED(완료), HELD(보류)
+CREATE TABLE IF NOT EXISTS work_order (
+    work_order_id VARCHAR(50) PRIMARY KEY,
+    item_code     VARCHAR(50) NOT NULL REFERENCES item (item_code),
+    planned_qty   INT NOT NULL CHECK (planned_qty > 0),
+    status        VARCHAR(20) NOT NULL DEFAULT 'PLANNED'
+                  CHECK (status IN ('PLANNED', 'RELEASED', 'IN_PROGRESS', 'HELD', 'COMPLETED')),
+    priority      INT NOT NULL DEFAULT 5 CHECK (priority BETWEEN 0 AND 9),
+    due_at        TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    released_at   TIMESTAMPTZ,
+    started_at    TIMESTAMPTZ,
+    completed_at  TIMESTAMPTZ
+);
+
+-- 라인 하나는 한 번에 작업지시 하나만 생산한다: 진행 중(IN_PROGRESS)은 최대 1건
+CREATE UNIQUE INDEX IF NOT EXISTS work_order_one_in_progress_idx ON work_order ((true)) WHERE status = 'IN_PROGRESS';
+-- 라인이 비면 하달된 지시 중 우선순위 높은 순 → 하달 빠른 순으로 고른다
+CREATE INDEX IF NOT EXISTS work_order_dispatch_idx ON work_order (status, priority DESC, released_at);
+
+-- 시뮬레이터 실행: 마지막에 시작한 시뮬레이터(run_id) 하나만 데이터를 보낼 수 있다. 행은 늘 1개(id = 1)
+CREATE TABLE IF NOT EXISTS producer_run (
+    id         SMALLINT PRIMARY KEY CHECK (id = 1),
+    run_id     UUID NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ── 수신 데이터 ───────────────────────────────────────────
+
+-- 장비 센서 시계열 로그: 1초마다 계속 쌓인다. status: RUN 가동 · WARN 경고 · DOWN 고장 · IDLE 대기
 CREATE TABLE IF NOT EXISTS equipment_sensor_log (
     id           BIGSERIAL PRIMARY KEY,
     equipment_id VARCHAR(50) NOT NULL,
@@ -10,10 +72,11 @@ CREATE TABLE IF NOT EXISTS equipment_sensor_log (
 );
 
 -- 작업 실적: 작업지시 · 장비마다 한 행을 두고 최신 누적 수량으로 갱신한다
+-- (외래 키는 2026-10 작업지시 추가 때 넣었다. 그 전에 만든 DB는 이 테이블을 지우고 다시 만들어야 외래 키가 생긴다)
 CREATE TABLE IF NOT EXISTS production_performance (
     id              BIGSERIAL PRIMARY KEY,
-    work_order_id   VARCHAR(50) NOT NULL,
-    equipment_id    VARCHAR(50) NOT NULL,
+    work_order_id   VARCHAR(50) NOT NULL REFERENCES work_order (work_order_id),
+    equipment_id    VARCHAR(50) NOT NULL REFERENCES equipment (equipment_id),
     total_count     INT DEFAULT 0,
     good_count      INT DEFAULT 0,
     bad_count       INT DEFAULT 0,

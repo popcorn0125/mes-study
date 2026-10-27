@@ -1,6 +1,8 @@
 package com.messtudy.backend.controller;
 
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -8,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -18,13 +21,15 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.messtudy.backend.service.InvalidPayloadException;
-import com.messtudy.backend.service.SensorLogService;
+import com.messtudy.backend.service.ProducerService;
+import com.messtudy.backend.service.StateConflictException;
 
 /** DB 없이 요청 · 응답 형식과 CORS만 확인한다(서비스는 가짜). WebConfig · 예외 처리기는 @WebMvcTest가 함께 올린다. */
 @WebMvcTest(SensorLogController.class)
 class SensorLogControllerTest {
 
     private static final String URL = "/api/v1/sensor-logs/bulk";
+    private static final String RUN_ID = "7d0e0c4e-2f4b-4b8e-9f3a-1c2d3e4f5a6b";
     private static final String BODY = """
             [{
               "equipmentId": "CNC_01",
@@ -40,34 +45,50 @@ class SensorLogControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private SensorLogService sensorLogService;
+    private ProducerService producerService;
+
+    private static Map<String, Object> saved(int sensorLogs, int productions) {
+        Map<String, Object> result = new HashMap<>(Map.of("sensorLogs", sensorLogs, "productions", productions));
+        result.put("workOrder", Map.of("workOrderId", "WO-20261024-001", "plannedQty", 20));
+        return result;
+    }
 
     @Test
     void 정상_요청이면_200과_저장_건수를_돌려준다() throws Exception {
-        given(sensorLogService.save(anyList())).willReturn(Map.of("sensorLogs", 1, "productions", 1));
+        given(producerService.receive(eq(RUN_ID), anyList())).willReturn(saved(1, 1));
 
-        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(BODY))
+        mockMvc.perform(post(URL).header("X-Producer-Run-Id", RUN_ID).contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sensorLogs").value(1))
-                .andExpect(jsonPath("$.productions").value(1));
+                .andExpect(jsonPath("$.productions").value(1))
+                .andExpect(jsonPath("$.workOrder.workOrderId").value("WO-20261024-001"));
     }
 
     @Test
     void 빈_배열도_200이다() throws Exception {
-        given(sensorLogService.save(anyList())).willReturn(Map.of("sensorLogs", 0, "productions", 0));
+        given(producerService.receive(eq(RUN_ID), anyList())).willReturn(saved(0, 0));
 
-        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("[]"))
+        mockMvc.perform(post(URL).header("X-Producer-Run-Id", RUN_ID).contentType(MediaType.APPLICATION_JSON).content("[]"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sensorLogs").value(0));
     }
 
     @Test
     void 필수_값이_없으면_400과_이유를_돌려준다() throws Exception {
-        given(sensorLogService.save(anyList())).willThrow(new InvalidPayloadException("[0].equipmentId: 문자열 값이 필요합니다"));
+        given(producerService.receive(eq(RUN_ID), anyList())).willThrow(new InvalidPayloadException("[0].equipmentId: 문자열 값이 필요합니다"));
 
-        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(BODY))
+        mockMvc.perform(post(URL).header("X-Producer-Run-Id", RUN_ID).contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("[0].equipmentId: 문자열 값이 필요합니다"));
+    }
+
+    @Test
+    void 실행_ID가_없거나_밀려난_실행이면_409다() throws Exception {
+        given(producerService.receive(isNull(), anyList())).willThrow(new StateConflictException("다른 시뮬레이터가 실행 중입니다"));
+
+        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("다른 시뮬레이터가 실행 중입니다"));
     }
 
     @Test
@@ -83,7 +104,7 @@ class SensorLogControllerTest {
         mockMvc.perform(options(URL)
                         .header("Origin", "http://localhost:5173")
                         .header("Access-Control-Request-Method", "POST")
-                        .header("Access-Control-Request-Headers", "content-type"))
+                        .header("Access-Control-Request-Headers", "content-type,x-producer-run-id"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"));
     }

@@ -10,8 +10,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import com.messtudy.backend.service.InvalidPayloadException;
+import com.messtudy.backend.service.NotFoundException;
+import com.messtudy.backend.service.StateConflictException;
 
-/** 잘못된 요청을 400과 이유 메시지로 응답한다. */
+/** 잘못된 요청을 400 · 404 · 409와 이유 메시지로 응답한다. */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -34,5 +36,19 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
         return Map.of("message", e.getName() + ": 형식이 맞지 않습니다(" + e.getValue() + ")");
+    }
+
+    /** 없는 작업지시 */
+    @ExceptionHandler(NotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Map<String, String> handleNotFound(NotFoundException e) {
+        return Map.of("message", e.getMessage());
+    }
+
+    /** 지금 상태에서 할 수 없는 전환, 다른 시뮬레이터가 넘겨받은 뒤의 전송 */
+    @ExceptionHandler(StateConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> handleConflict(StateConflictException e) {
+        return Map.of("message", e.getMessage());
     }
 }

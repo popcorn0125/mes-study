@@ -14,6 +14,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.messtudy.backend.TestDb;
+
 /** 테스트 DB(mes_test)에서 두 테이블 저장과 트랜잭션 롤백을 확인한다. */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -27,7 +29,7 @@ class SensorLogServiceDbTest {
 
     @BeforeEach
     void clean() {
-        jdbc.execute("TRUNCATE equipment_sensor_log, production_performance RESTART IDENTITY");
+        TestDb.resetWithWorkOrder(jdbc);
     }
 
     private static Map<String, Object> item(String workOrderId, String equipmentId, int totalCount) {

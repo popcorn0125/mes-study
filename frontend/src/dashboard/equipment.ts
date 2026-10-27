@@ -4,7 +4,7 @@ import type { SensorStatus } from '@/producer/generate'
 import { isFresh } from './production'
 
 /** 상태 비율 막대 · 범례에 쓰는 순서 */
-export const STATUS_ORDER: readonly SensorStatus[] = ['RUN', 'WARN', 'DOWN']
+export const STATUS_ORDER: readonly SensorStatus[] = ['RUN', 'IDLE', 'WARN', 'DOWN']
 
 /** 설비 상태 카드 하나 */
 export interface EquipmentCard {
@@ -37,12 +37,12 @@ export function toEquipmentCards(latest: readonly LatestLog[], now: number): Equ
 /** 상태별 초 집계를 설비마다 묶어 가동률을 계산한다(라인 순서) */
 export function toUtilization(summary: readonly StatusSeconds[]): Utilization[] {
   return PRODUCER_EQUIPMENT.map((equipment) => {
-    const seconds: Record<SensorStatus, number> = { RUN: 0, WARN: 0, DOWN: 0 }
+    const seconds: Record<SensorStatus, number> = { RUN: 0, IDLE: 0, WARN: 0, DOWN: 0 }
     for (const row of summary) {
-      // 정의에 없는 상태(예전 데이터의 IDLE 등)는 비율에서 뺀다
+      // 정의에 없는 상태는 비율에서 뺀다
       if (row.equipmentId === equipment.id && row.status in seconds) seconds[row.status] += row.seconds
     }
-    const totalSeconds = seconds.RUN + seconds.WARN + seconds.DOWN
+    const totalSeconds = seconds.RUN + seconds.IDLE + seconds.WARN + seconds.DOWN
     return { equipment, seconds, totalSeconds, runRatio: totalSeconds > 0 ? seconds.RUN / totalSeconds : undefined }
   })
 }

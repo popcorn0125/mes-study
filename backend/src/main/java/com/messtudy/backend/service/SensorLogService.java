@@ -31,7 +31,8 @@ public class SensorLogService {
     }
 
     /**
-     * @param payload 설비별 데이터 목록(equipmentId, timestamp, status, workOrderId, metrics, production)
+     * @param payload 설비별 데이터 목록(equipmentId, timestamp, status, workOrderId, metrics, production).
+     *                진행 중 작업지시가 없을 때는 workOrderId · production을 둘 다 뺀다
      * @return 저장한 건수 {"sensorLogs": 넣은 센서 로그 수, "productions": 추가 · 갱신한 실적 수}
      * @throws InvalidPayloadException 필수 값이 없거나 형식이 틀렸을 때(아무것도 저장하지 않는다)
      */
@@ -52,12 +53,17 @@ public class SensorLogService {
             }
             String where = "[" + i + "]";
             sensorLogs.add(toSensorLog(item, where));
+            // 진행 중 작업지시가 없으면(설비 대기) workOrderId · production 없이 센서 로그만 온다
+            if (item.get("workOrderId") == null && item.get("production") == null) {
+                continue;
+            }
             Map<String, Object> production = toProduction(item, where);
             productions.put(production.get("workOrderId") + "|" + production.get("equipmentId"), production);
         }
 
         int savedLogs = sensorLogMapper.insertAll(sensorLogs);
-        int savedProductions = productionPerformanceMapper.upsertAll(new ArrayList<>(productions.values()));
+        int savedProductions = productions.isEmpty() ? 0
+                : productionPerformanceMapper.upsertAll(new ArrayList<>(productions.values()));
         return result(savedLogs, savedProductions);
     }
 

@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.messtudy.backend.mapper.WorkOrderMapper">
+
+    <!-- 마지막 공정(line_order가 가장 큰 설비)의 양품 수 = 작업지시 실적 -->
+    <sql id="completedQty">
+        COALESCE((
+            SELECT p.good_count
+            FROM production_performance p
+            WHERE p.work_order_id = w.work_order_id
+              AND p.equipment_id = (SELECT equipment_id FROM equipment ORDER BY line_order DESC LIMIT 1)
+        ), 0)
+    </sql>
+
+    <sql id="columns">
+        w.work_order_id AS "workOrderId",
+        w.item_code     AS "itemCode",
+        i.item_name     AS "itemName",
+        w.planned_qty   AS "plannedQty",
+        w.status        AS "status",
+        w.priority      AS "priority",
+        w.due_at        AS "dueAt",
+        w.created_at    AS "createdAt",
+        w.released_at   AS "releasedAt",
+        w.started_at    AS "startedAt",
+        w.completed_at  AS "completedAt",
+        <include refid="completedQty"/> AS "completedQty"
+    </sql>
+
+    <select id="lockLine" resultType="int">
+        SELECT 1 FROM pg_advisory_xact_lock(4201)
+    </select>
+
+    <!-- 그날 마지막 순번 + 1. 999를 넘으면 자리가 늘어난다(WO-20261028-1000) -->
+    <select id="nextWorkOrderId" resultType="string">
+        SELECT 'WO-' || d.day || '-' || lpad(n.next::text, greatest(3, length(n.next::text)), '0')
+        FROM (SELECT to_char(now() AT TIME ZONE 'Asia/Seoul', 'YYYYMMDD') AS day) d
+        CROSS JOIN LATERAL (
+            SELECT COALESCE(max(substring(work_order_id FROM length('WO-' || d.day || '-') + 1)::int), 0) + 1 AS next
+            FROM work_order
+            WHERE work_order_id LIKE 'WO-' || d.day || '-%'
+        ) n
+    </select>
+
+    <insert id="insert">
+        INSERT INTO work_order (work_order_id, item_code, planned_qty, priority, due_at)
+        VALUES (#{workOrderId}, #{itemCode}, #{plannedQty}, #{priority}, #{dueAt, jdbcType=TIMESTAMP_WITH_TIMEZONE})
+    </insert>
+
+    <select id="findAll" resultType="map">
+        SELECT <include refid="columns"/>
+        FROM work_order w
+        JOIN item i ON i.item_code = w.item_code
+        <where>
+            <if test="statuses != null and !statuses.isEmpty()">
+                w.status IN
+                <foreach collection="statuses" item="status" open="(" separator="," close=")">#{status}</foreach>
+            </if>
+        </where>
+        ORDER BY
+            CASE w.status WHEN 'IN_PROGRESS' THEN 0 WHEN 'RELEASED' THEN 1 WHEN 'HELD' THEN 2 WHEN 'PLANNED' THEN 3 ELSE 4 END,
+            w.completed_at DESC NULLS LAST,
+            w.priority DESC,
+            w.released_at NULLS LAST,
+            w.created_at
+        LIMIT 200
+    </select>
+
+    <select id="findById" resultType="map">
+        SELECT <include refid="columns"/>
+        FROM work_order w
+        JOIN item i ON i.item_code = w.item_code
+        WHERE w.work_order_id = #{workOrderId}
+    </select>
+
+    <select id="findCurrent" resultType="map">
+        SELECT <include refid="columns"/>
+        FROM work_order w
+        JOIN item i ON i.item_code = w.item_code
+        WHERE w.status = 'IN_PROGRESS'
+    </select>
+
+    <select id="findPerformance" resultType="map">
+        SELECT
+            e.equipment_id            AS "equipmentId",
+            e.equipment_name          AS "equipmentName",
+            e.line_order              AS "lineOrder",
+            e.standard_tact_sec       AS "standardTactSec",
+            COALESCE(p.total_count, 0) AS "totalCount",
+            COALESCE(p.good_count, 0)  AS "goodCount",
+            COALESCE(p.bad_count, 0)   AS "badCount"
+        FROM equipment e
+        LEFT JOIN production_performance p
+               ON p.equipment_id = e.equipment_id AND p.work_order_id = #{workOrderId}
+        ORDER BY e.line_order
+    </select>
+
+    <!-- 하달 시각은 처음 하달 때만 채운다(보류 해제 뒤에도 원래 하달 순서를 지킨다). 시작 시각도 처음 진행 때만 -->
+    <update id="transition">
+        UPDATE work_order SET
+            status       = #{to},
+            released_at  = CASE WHEN #{to} = 'RELEASED' THEN COALESCE(released_at, now()) ELSE released_at END,
+            started_at   = CASE WHEN #{to} = 'IN_PROGRESS' THEN COALESCE(started_at, now()) ELSE started_at END,
+            completed_at = CASE WHEN #{to} = 'COMPLETED' THEN now() ELSE completed_at END
+        WHERE work_order_id = #{workOrderId}
+          AND status IN <foreach collection="from" item="status" open="(" separator="," close=")">#{status}</foreach>
+    </update>
+
+    <update id="startNext">
+        UPDATE work_order SET
+            status     = 'IN_PROGRESS',
+            started_at = COALESCE(started_at, now())
+        WHERE work_order_id = (
+            SELECT work_order_id
+            FROM work_order
+            WHERE status = 'RELEASED'
+            ORDER BY priority DESC, released_at, work_order_id
+            LIMIT 1
+        )
+          AND NOT EXISTS (SELECT 1 FROM work_order WHERE status = 'IN_PROGRESS')
+    </update>
+
+    <update id="completeIfDone">
+        UPDATE work_order w SET
+            status       = 'COMPLETED',
+            completed_at = now()
+        WHERE w.status = 'IN_PROGRESS'
+          AND <include refid="completedQty"/> &gt;= w.planned_qty
+    </update>
+
+</mapper>

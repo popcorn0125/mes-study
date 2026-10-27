@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.messtudy.backend.mapper.MasterDataMapper">
+
+    <select id="findItems" resultType="map">
+        SELECT item_code AS "itemCode", item_name AS "itemName"
+        FROM item
+        ORDER BY item_code
+    </select>
+
+    <select id="findEquipment" resultType="map">
+        SELECT
+            equipment_id      AS "equipmentId",
+            equipment_name    AS "equipmentName",
+            work_center_name  AS "workCenterName",
+            line_order        AS "lineOrder",
+            standard_tact_sec AS "standardTactSec"
+        FROM equipment
+        ORDER BY line_order
+    </select>
+
+    <select id="existsItem" resultType="boolean">
+        SELECT EXISTS (SELECT 1 FROM item WHERE item_code = #{itemCode})
+    </select>
+
+</mapper>

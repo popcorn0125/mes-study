@@ -14,6 +14,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.messtudy.backend.TestDb;
+
 /** 테스트 DB(mes_test)에 로그를 넣고 조회 SQL 결과를 확인한다. 시각은 모두 DB 현재 시각 기준 "n초 전"으로 넣는다. */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -33,7 +35,7 @@ class QueryMapperDbTest {
 
     @BeforeEach
     void clean() {
-        jdbc.execute("TRUNCATE equipment_sensor_log, production_performance RESTART IDENTITY");
+        TestDb.resetWithWorkOrder(jdbc);
         now = jdbc.queryForObject("SELECT now()", OffsetDateTime.class);
     }
 

@@ -45,7 +45,7 @@ const label = computed(() => {
   if (!log) return null
   const style = STATUS_STYLE[log.status]
   return {
-    status: `${log.status === 'RUN' ? '' : '⚠ '}${style.label}`,
+    status: `${log.status === 'WARN' || log.status === 'DOWN' ? '⚠ ' : ''}${style.label}`,
     statusColor: style.color,
     sensor: {
       temperature: `${log.metrics.temperature.toFixed(0)}°C`,
@@ -56,13 +56,14 @@ const label = computed(() => {
 
 /**
  * 경광등(위에서부터 빨강·노랑·초록·파랑). 실제 라인처럼 상태를 색으로 알린다.
- * 가동 = 초록, 경고 = 노랑, 고장 = 빨강 점멸.
+ * 가동 = 초록, 경고 = 노랑, 고장 = 빨강 점멸, 대기 = 파랑.
  */
 const TOWER_LAMPS = ['#f85149', '#d29922', '#3fb950', '#2f81f7'] as const
 const LAMP_OF_STATUS: Record<SensorStatus, number> = {
   DOWN: 0,
   WARN: 1,
   RUN: 2,
+  IDLE: 3,
 }
 
 // 바닥 띠·경광등은 매 프레임 최신 로그를 읽어 반영한다.

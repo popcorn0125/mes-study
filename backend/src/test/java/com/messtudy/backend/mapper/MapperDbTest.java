@@ -15,6 +15,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.messtudy.backend.TestDb;
+
 /** 테스트 DB(mes_test)에 실제로 넣고 읽어 SQL을 확인한다. */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -31,7 +33,7 @@ class MapperDbTest {
 
     @BeforeEach
     void clean() {
-        jdbc.execute("TRUNCATE equipment_sensor_log, production_performance RESTART IDENTITY");
+        TestDb.resetWithWorkOrder(jdbc);
     }
 
     private static Map<String, Object> log(String equipmentId, String temperature) {

@@ -81,6 +81,28 @@ class SensorLogServiceTest {
     }
 
     @Test
+    void 작업지시가_없는_항목은_센서_로그만_저장한다() {
+        Map<String, Object> idle = item("CNC_01", 0);
+        idle.put("status", "IDLE");
+        idle.remove("workOrderId");
+        idle.remove("production");
+
+        Map<String, Integer> result = service.save(List.of(idle, item("WINDER_01", 3)));
+
+        assertThat(result).isEqualTo(Map.of("sensorLogs", 2, "productions", 1));
+        assertThat(insertedLogs.get(0)).containsEntry("status", "IDLE");
+        assertThat(upsertedRows).extracting(row -> row.get("equipmentId")).containsExactly("WINDER_01");
+    }
+
+    @Test
+    void 실적만_있고_작업지시_번호가_없으면_예외다() {
+        Map<String, Object> noWorkOrder = item("CNC_01", 1);
+        noWorkOrder.remove("workOrderId");
+
+        assertInvalid(noWorkOrder, "[0].workOrderId");
+    }
+
+    @Test
     void 온도_진동이_없으면_null로_저장한다() {
         Map<String, Object> item = item("CNC_01", 1);
         item.put("metrics", new HashMap<>());

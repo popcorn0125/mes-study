@@ -27,7 +27,7 @@ declare module 'vue-router' {
 
 /**
  * 페이지는 MES 기능 단위로 나눈다(docs/dashboard-plan.md).
- * 아직 보여 줄 데이터가 없는 메뉴(품질 · 자재 · 리포트)는 hidden으로 사이드바에서 숨긴다.
+ * 아직 보여 줄 데이터가 없는 메뉴(자재 · 리포트)는 hidden으로 사이드바에서 숨긴다.
  */
 export const routes: RouteRecordRaw[] = [
   {
@@ -52,7 +52,7 @@ export const routes: RouteRecordRaw[] = [
     path: '/quality',
     name: 'quality',
     component: QualityView,
-    meta: { title: '품질 관리', icon: '✅', hidden: true },
+    meta: { title: '품질 관리', icon: '✅' },
   },
   {
     path: '/materials',

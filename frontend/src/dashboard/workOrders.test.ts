@@ -33,6 +33,7 @@ function detail(goods: number[], overrides: Partial<WorkOrder> = {}): WorkOrderD
     totalCount: good + (i === 0 ? 1 : 0),
     goodCount: good,
     badCount: i === 0 ? 1 : 0,
+    defects: {},
   }))
   return { ...workOrder({ completedQty: goods[goods.length - 1], ...overrides }), performance }
 }

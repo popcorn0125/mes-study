@@ -49,7 +49,7 @@ public class WorkOrderService {
         return workOrderMapper.findAll(statuses);
     }
 
-    /** 상세: 작업지시 + 설비별 수량(performance) */
+    /** 상세: 작업지시 + 설비별 수량 · 유형별 불량(performance[].defects) */
     public Map<String, Object> findById(String workOrderId) {
         Map<String, Object> workOrder = workOrderMapper.findById(workOrderId);
         if (workOrder == null) {
@@ -137,9 +137,23 @@ public class WorkOrderService {
         return findById(workOrderId);
     }
 
+    /** 설비별 수량에 유형별 누적 불량({유형 코드: 수}, 없으면 빈 객체)을 붙인다. 시뮬레이터가 이어 셀 때 쓴다 */
     private Map<String, Object> withPerformance(Map<String, Object> workOrder) {
+        String workOrderId = (String) workOrder.get("workOrderId");
+        Map<String, Map<String, Object>> defects = new HashMap<>();
+        for (Map<String, Object> row : workOrderMapper.findDefects(workOrderId)) {
+            defects.computeIfAbsent((String) row.get("equipmentId"), k -> new LinkedHashMap<>())
+                    .put((String) row.get("defectCode"), row.get("defectCount"));
+        }
+        List<Map<String, Object>> performance = workOrderMapper.findPerformance(workOrderId).stream()
+                .map(row -> {
+                    Map<String, Object> withDefects = new LinkedHashMap<>(row);
+                    withDefects.put("defects", defects.getOrDefault((String) row.get("equipmentId"), Map.of()));
+                    return withDefects;
+                })
+                .toList();
         Map<String, Object> detail = new LinkedHashMap<>(workOrder);
-        detail.put("performance", workOrderMapper.findPerformance((String) workOrder.get("workOrderId")));
+        detail.put("performance", performance);
         return detail;
     }
 

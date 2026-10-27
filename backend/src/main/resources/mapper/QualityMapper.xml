@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.messtudy.backend.mapper.QualityMapper">
+
+    <!-- 품질 합계. 비율(합격률 · 직행률 · 누적 %)은 QualityService가 계산한다.
+         구간 조건은 occurred_at 인덱스(production_event · defect_event)를 탄다 -->
+
+    <select id="sumDefects" resultType="map">
+        SELECT
+            d.defect_code    AS "defectCode",
+            t.defect_name    AS "defectName",
+            d.equipment_id   AS "equipmentId",
+            e.equipment_name AS "equipmentName",
+            sum(d.qty)       AS "count"
+        FROM defect_event d
+        JOIN defect_type t ON t.defect_code = d.defect_code
+        JOIN equipment e ON e.equipment_id = d.equipment_id
+        WHERE d.occurred_at &gt;= #{from} AND d.occurred_at &lt; #{to}
+        GROUP BY d.defect_code, t.defect_name, t.display_order, d.equipment_id, e.equipment_name
+        ORDER BY sum(d.qty) DESC, t.display_order
+    </select>
+
+    <select id="sumByWorkOrder" resultType="map">
+        WITH counts AS (
+            SELECT
+                work_order_id,
+                sum(good_qty) FILTER (WHERE equipment_id = (SELECT equipment_id FROM equipment ORDER BY line_order DESC LIMIT 1)) AS finished,
+                sum(bad_qty) AS bad
+            FROM production_event
+            WHERE occurred_at &gt;= #{from} AND occurred_at &lt; #{to}
+            GROUP BY work_order_id
+        ),
+        top_defect AS (
+            SELECT DISTINCT ON (d.work_order_id) d.work_order_id, t.defect_name
+            FROM defect_event d
+            JOIN defect_type t ON t.defect_code = d.defect_code
+            WHERE d.occurred_at &gt;= #{from} AND d.occurred_at &lt; #{to}
+            GROUP BY d.work_order_id, t.defect_name, t.display_order
+            ORDER BY d.work_order_id, sum(d.qty) DESC, t.display_order
+        )
+        SELECT
+            w.work_order_id         AS "workOrderId",
+            w.item_code             AS "itemCode",
+            w.status                AS "status",
+            COALESCE(c.finished, 0) AS "finishedCount",
+            c.bad                   AS "badCount",
+            td.defect_name          AS "topDefectName"
+        FROM counts c
+        JOIN work_order w ON w.work_order_id = c.work_order_id
+        LEFT JOIN top_defect td ON td.work_order_id = c.work_order_id
+        ORDER BY w.started_at DESC NULLS LAST, w.work_order_id
+    </select>
+
+</mapper>

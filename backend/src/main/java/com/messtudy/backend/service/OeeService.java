@@ -11,7 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.function.Function;
 
 import org.springframework.stereotype.Service;
 
@@ -247,9 +246,12 @@ public class OeeService {
 
     private static Map<Instant, List<Map<String, Object>>> groupByBucket(List<Map<String, Object>> rows) {
         Map<Instant, List<Map<String, Object>>> map = new TreeMap<>();
-        Function<Object, Instant> toInstant = value -> value instanceof java.util.Date date
-                ? date.toInstant() : Instant.from((TemporalAccessor) value);
-        rows.forEach(row -> map.computeIfAbsent(toInstant.apply(row.get("bucketStart")), k -> new ArrayList<>()).add(row));
+        rows.forEach(row -> map.computeIfAbsent(toInstant(row.get("bucketStart")), k -> new ArrayList<>()).add(row));
         return map;
+    }
+
+    /** 추이 칸 시각(드라이버에 따라 Date 또는 OffsetDateTime)을 Instant로 맞춘다 */
+    static Instant toInstant(Object value) {
+        return value instanceof java.util.Date date ? date.toInstant() : Instant.from((TemporalAccessor) value);
     }
 }

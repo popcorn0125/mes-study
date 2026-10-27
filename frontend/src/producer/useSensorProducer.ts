@@ -27,7 +27,7 @@ export interface SensorProducer {
 
 /**
  * 더미 센서 데이터 발생기.
- * - 시작할 때 서버에서 실행 ID와 진행 중 작업지시 · 설비별 저장 수량을 받아 그 수량부터 이어 센다.
+ * - 시작할 때 서버에서 실행 ID와 진행 중 작업지시 · 설비별 저장 수량(유형별 불량 포함)을 받아 그 수량부터 이어 센다.
  * - 1초마다 라인을 한 걸음 진행해 로그를 보낸다. 응답에 담긴 진행 중 지시가 바뀌면 그 지시의 저장 수량을 받아 갈아탄다.
  * - 409(다른 탭이 넘겨받음)를 받으면 전송을 멈춘다. 그 밖의 전송 오류는 무시한다(서버가 꺼져도 화면은 계속 돈다).
  */
@@ -51,7 +51,7 @@ export function useSensorProducer(): SensorProducer {
     states = PRODUCER_EQUIPMENT.map((eq, i) => {
       const saved = detail?.performance.find((p) => p.equipmentId === eq.id)
       const production = saved
-        ? { totalCount: saved.totalCount, goodCount: saved.goodCount, badCount: saved.badCount }
+        ? { totalCount: saved.totalCount, goodCount: saved.goodCount, badCount: saved.badCount, defects: saved.defects ?? {} }
         : undefined
       return { ...initialState(eq, production), metrics: states[i].metrics }
     })

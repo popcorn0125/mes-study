@@ -35,9 +35,6 @@ export const PRODUCER_EQUIPMENT: readonly ProducerEquipment[] = [
   { id: 'PACKER_01', name: '포장기 #1', kind: 'packer', workCenterName: '포장', temperature: [26, 45], vibration: [0.5, 1.8], tactTime: 25, usesMaterials: false },
 ]
 
-/** 모든 설비가 처리 중인 작업지시(고정) */
-export const WORK_ORDER_ID = 'WO-20261024-001'
-
 /** 작업장 입력 버퍼 선반 용량(선반 높이에만 쓴다) */
 export const BUFFER_CAPACITY = 5
 

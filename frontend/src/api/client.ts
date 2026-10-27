@@ -11,3 +11,13 @@ export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 3000,
 })
+
+/** 서버가 보낸 오류 이유({message})를 꺼낸다. 응답이 없으면(서버 꺼짐 등) fallback */
+export function errorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const message = (error.response?.data as { message?: unknown } | undefined)?.message
+    if (typeof message === 'string' && message) return message
+    if (!error.response) return `${fallback}: 서버에 연결할 수 없습니다`
+  }
+  return fallback
+}

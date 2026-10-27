@@ -95,8 +95,8 @@ const conveyors = conveyorSegments(wcCount)
 const agvStops = stations.filter((s) => s.usesMaterials).map((s) => s.shelf[0])
 
 // 출하장 = 마지막 공정(포장)의 양품, 폐기함 = 모든 설비의 불량 합계
-const shipped = computed(() => findLog(logs.value, PRODUCER_EQUIPMENT[wcCount - 1].id)?.production.goodCount ?? 0)
-const scrapped = computed(() => logs.value.reduce((sum, log) => sum + log.production.badCount, 0))
+const shipped = computed(() => findLog(logs.value, PRODUCER_EQUIPMENT[wcCount - 1].id)?.production?.goodCount ?? 0)
+const scrapped = computed(() => logs.value.reduce((sum, log) => sum + (log.production?.badCount ?? 0), 0))
 </script>
 
 <template>

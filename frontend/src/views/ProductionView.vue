@@ -1,34 +1,39 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { fetchProduction } from '@/api/dashboard'
+import { fetchCurrentWorkOrder } from '@/api/workOrders'
 import { useNow } from '@/composables/useNow'
 import { usePolling } from '@/composables/usePolling'
 import { useLatestLogs } from '@/dashboard/latestLogs'
 import ConnectionNotice from '@/dashboard/ConnectionNotice.vue'
 import ProductionChart from '@/dashboard/ProductionChart.vue'
 import {
-  currentWorkOrderId,
   formatAgo,
   formatPercent,
   summarize,
   toProductionRows,
 } from '@/dashboard/production'
+import { estimateFinish, formatDateTime, progressOf } from '@/dashboard/workOrders'
 
-/** 생산 현황: 작업 실적(누적 수량)과 설비 가동 여부를 2초마다 다시 읽어 보여 준다 */
+/** 생산 현황: 진행 중 작업지시의 진척과 작업 실적(누적 수량), 설비 가동 여부를 2초마다 다시 읽어 보여 준다 */
 const production = usePolling(fetchProduction)
+/** 진행 중 작업지시(서버가 고른 것). 없으면 null */
+const current = usePolling(fetchCurrentWorkOrder)
 // 최신 로그는 레이아웃이 2초마다 한 번 조회한 것을 헤더와 같이 쓴다
 const latest = useLatestLogs()
 
 /** "n초 전" 문구가 폴링 사이에도 흐르도록 1초마다 갱신하는 현재 시각 */
 const now = useNow()
 
-const workOrderId = computed(() => currentWorkOrderId(production.data.value ?? []))
+const workOrder = computed(() => current.data.value ?? undefined)
+const workOrderId = computed(() => workOrder.value?.workOrderId)
+const eta = computed(() => (workOrder.value ? estimateFinish(workOrder.value, now.value) : undefined))
 const rows = computed(() => toProductionRows(production.data.value ?? [], workOrderId.value))
 const summary = computed(() => summarize(rows.value, latest.data.value ?? [], now.value))
 
-/** 두 요청 중 하나라도 실패하면 연결 안내를 띄운다 */
-const error = computed(() => production.error.value ?? latest.error.value)
-const loading = computed(() => production.loading.value || latest.loading.value)
+/** 요청 중 하나라도 실패하면 연결 안내를 띄운다 */
+const error = computed(() => production.error.value ?? current.error.value ?? latest.error.value)
+const loading = computed(() => production.loading.value || current.loading.value || latest.loading.value)
 
 const numberFormat = new Intl.NumberFormat('ko-KR')
 /** 실적을 한 번도 받지 못했으면(서버가 처음부터 꺼져 있음) 0 대신 "–"를 보인다 */
@@ -41,6 +46,51 @@ const count = (value: number) => (production.data.value === undefined ? '–' : 
       :error="error"
       :updated-at="production.updatedAt.value"
     />
+
+    <section
+      class="dash-card wo-current"
+      aria-label="진행 중 작업지시"
+    >
+      <template v-if="workOrder">
+        <div class="wo-current__head">
+          <span class="wo-current__label">진행 중 작업지시</span>
+          <RouterLink
+            class="wo-link"
+            :to="{ name: 'work-orders', query: { workOrder: workOrder.workOrderId } }"
+          >
+            {{ workOrder.workOrderId }}
+          </RouterLink>
+          <span>{{ workOrder.itemName }}</span>
+          <span
+            v-if="eta !== undefined"
+            class="wo-current__eta"
+          >예상 완료 <strong>{{ formatDateTime(eta) }}</strong></span>
+        </div>
+        <div class="wo-current__progress">
+          <span class="wo-bar wo-bar--wide"><span :style="{ width: `${Math.round(progressOf(workOrder) * 100)}%` }" /></span>
+          <span><strong>{{ numberFormat.format(workOrder.completedQty) }}</strong> / {{ numberFormat.format(workOrder.plannedQty) }}개
+            ({{ Math.round(progressOf(workOrder) * 100) }}%)</span>
+        </div>
+      </template>
+      <p
+        v-else-if="current.data.value === null"
+        class="dash-empty"
+      >
+        진행 중인 작업지시가 없어 라인이 대기 중입니다.
+        <RouterLink
+          class="wo-link"
+          :to="{ name: 'work-orders' }"
+        >
+          작업지시 관리에서 하달하기
+        </RouterLink>
+      </p>
+      <p
+        v-else
+        class="dash-empty"
+      >
+        {{ current.loading.value ? '불러오는 중…' : '작업지시를 받지 못했습니다.' }}
+      </p>
+    </section>
 
     <section
       class="dash-kpis"
@@ -89,7 +139,7 @@ const count = (value: number) => (production.data.value === undefined ? '–' : 
         v-else-if="rows.length === 0"
         class="dash-empty"
       >
-        아직 실적이 없습니다. 자동 시뮬레이션을 열면 택트 타임마다 수량이 올라갑니다.
+        {{ workOrderId ? '아직 실적이 없습니다. 자동 시뮬레이션을 열면 택트 타임마다 수량이 올라갑니다.' : '진행 중인 작업지시가 없습니다.' }}
       </p>
       <table
         v-else

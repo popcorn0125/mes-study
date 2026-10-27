@@ -5,6 +5,8 @@ export const EQUIPMENT_STATUS_STYLE: Record<SensorStatus, { color: string; label
   RUN: { color: '#3fb950', label: '가동' },
   WARN: { color: '#d29922', label: '경고' },
   DOWN: { color: '#f85149', label: '고장' },
+  // 만들 것이 없어 기다리는 중(작업지시 없음 · 앞 공정 양품 대기). 알림 대상이 아니라 경고색과 겹치지 않는 파랑
+  IDLE: { color: '#388bfd', label: '대기' },
 }
 
 type SensorLevel = 'NORMAL' | 'WARNING' | 'CRITICAL'

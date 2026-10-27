@@ -12,21 +12,24 @@ function queue(...values: number[]): Random {
   return () => values.shift() ?? 0.5
 }
 
+/** 투입할 것이 계속 있는 상태(supply 무한)로 n초 진행 */
 function run(eq: ProducerEquipment, state: EquipmentState, seconds: number, random: Random = steady): EquipmentState {
-  for (let i = 0; i < seconds; i++) state = step(eq, state, random)
+  for (let i = 0; i < seconds; i++) state = step(eq, state, random, Infinity)
   return state
 }
 
 describe('더미 센서 데이터', () => {
-  it('RUN · 수량 0 · 정상 범위 가운데 값에서 시작한다', () => {
+  it('대기 · 수량 0 · 정상 범위 가운데 값에서 시작하고, 저장된 수량을 주면 그 값부터 시작한다', () => {
     expect(initialState(CNC)).toEqual({
       equipmentId: 'CNC_01',
-      status: 'RUN',
+      status: 'IDLE',
       statusRemaining: 0,
+      inProcess: false,
       tactElapsed: 0,
       metrics: { temperature: 49, vibration: 2.5 },
       production: { totalCount: 0, goodCount: 0, badCount: 0 },
     })
+    expect(initialState(CNC, { totalCount: 7, goodCount: 6, badCount: 1 }).production).toEqual({ totalCount: 7, goodCount: 6, badCount: 1 })
   })
 
   it('측정값은 1초에 범위 폭의 5% 안에서 움직이고, 범위를 벗어나지 않는다', () => {
@@ -37,7 +40,7 @@ describe('더미 센서 데이터', () => {
     const random = createRng(1)
     let state = initialState(CNC)
     for (let i = 0; i < 500; i++) {
-      const next = step(CNC, state, random)
+      const next = step(CNC, state, random, Infinity)
       expect(Math.abs(next.metrics.temperature - state.metrics.temperature)).toBeLessThanOrEqual(1.1 + 0.05)
       expect(next.metrics.temperature).toBeGreaterThanOrEqual(38)
       expect(next.metrics.temperature).toBeLessThanOrEqual(60)
@@ -50,24 +53,40 @@ describe('더미 센서 데이터', () => {
   it('택트 타임 사이에는 수량을 그대로 두고, 택트 타임마다 1개를 완성한다', () => {
     const before = run(CNC, initialState(CNC), CNC.tactTime - 1)
     expect(before.production).toEqual({ totalCount: 0, goodCount: 0, badCount: 0 })
-    const first = step(CNC, before, steady)
+    const first = step(CNC, before, steady, Infinity)
     expect(first.production).toEqual({ totalCount: 1, goodCount: 1, badCount: 0 })
     expect(first.status).toBe('RUN')
     expect(run(CNC, first, CNC.tactTime - 1).production.totalCount).toBe(1)
     expect(run(CNC, first, CNC.tactTime).production.totalCount).toBe(2)
   })
 
+  it('투입할 것이 없으면 대기(IDLE)이고 수량이 늘지 않는다', () => {
+    let state = initialState(CNC)
+    for (let i = 0; i < CNC.tactTime * 2; i++) state = step(CNC, state, steady, 0)
+    expect(state.status).toBe('IDLE')
+    expect(state.inProcess).toBe(false)
+    expect(state.production.totalCount).toBe(0)
+  })
+
+  it('1개만 투입할 수 있으면 1개를 완성하고 대기로 돌아간다. 가공 중이던 것은 supply가 0이 돼도 끝까지 만든다', () => {
+    let state = step(CNC, initialState(CNC), steady, 1) // 투입
+    expect(state).toMatchObject({ status: 'RUN', inProcess: true, tactElapsed: 1 })
+    for (let i = 1; i < CNC.tactTime; i++) state = step(CNC, state, steady, 0)
+    expect(state.production.totalCount).toBe(1)
+    expect(state.status).toBe('IDLE')
+  })
+
   it('불량이 나면 WARN 또는 DOWN으로 3~5초 바뀌었다가 RUN으로 돌아온다', () => {
     const before = run(CNC, initialState(CNC), CNC.tactTime - 1)
     // 불량(0.01 < 5%) → WARN(0.2 < 0.5) → 3초(0)
-    const warn = step(CNC, before, queue(0.01, 0.2, 0))
+    const warn = step(CNC, before, queue(0.01, 0.2, 0), Infinity)
     expect(warn.production).toEqual({ totalCount: 1, goodCount: 0, badCount: 1 })
     expect(warn.status).toBe('WARN')
     expect(run(CNC, warn, 2).status).toBe('WARN')
     expect(run(CNC, warn, 3).status).toBe('RUN')
 
     // 불량 → DOWN(0.7) → 5초(0.99)
-    const down = step(CNC, before, queue(0.01, 0.7, 0.99))
+    const down = step(CNC, before, queue(0.01, 0.7, 0.99), Infinity)
     expect(down.status).toBe('DOWN')
     expect(run(CNC, down, 4).status).toBe('DOWN')
     expect(run(CNC, down, 5).status).toBe('RUN')
@@ -75,12 +94,12 @@ describe('더미 센서 데이터', () => {
 
   it('DOWN 동안은 택트 타이머가 멈춘다', () => {
     const before = run(CNC, initialState(CNC), CNC.tactTime - 1)
-    const down = step(CNC, before, queue(0.01, 0.7, 0)) // DOWN 3초
+    const down = step(CNC, before, queue(0.01, 0.7, 0), Infinity) // DOWN 3초
     expect(down.tactElapsed).toBe(0)
     const stopped = run(CNC, down, 2)
     expect(stopped.status).toBe('DOWN')
     expect(stopped.tactElapsed).toBe(0)
-    const resumed = step(CNC, stopped, steady)
+    const resumed = step(CNC, stopped, steady, Infinity)
     expect(resumed.status).toBe('RUN')
     expect(resumed.tactElapsed).toBe(1)
   })
@@ -94,12 +113,19 @@ describe('더미 센서 데이터', () => {
     expect(badCount / totalCount).toBeLessThan(0.06)
   })
 
-  it('전송 로그에는 스키마 필드만 담는다', () => {
-    const log = toLog(initialState(CNC), 'WO-20261024-001', new Date('2026-10-24T23:37:12.451Z'))
+  it('전송 로그에는 스키마 필드만 담고, 작업지시가 없으면 수량을 빼고 보낸다', () => {
+    const at = new Date('2026-10-24T23:37:12.451Z')
+    expect(toLog(initialState(CNC), undefined, at)).toEqual({
+      equipmentId: 'CNC_01',
+      timestamp: '2026-10-24T23:37:12.451Z',
+      status: 'IDLE',
+      metrics: { temperature: 49, vibration: 2.5 },
+    })
+    const log = toLog(initialState(CNC), 'WO-20261024-001', at)
     expect(log).toEqual({
       equipmentId: 'CNC_01',
       timestamp: '2026-10-24T23:37:12.451Z',
-      status: 'RUN',
+      status: 'IDLE',
       workOrderId: 'WO-20261024-001',
       metrics: { temperature: 49, vibration: 2.5 },
       production: { totalCount: 0, goodCount: 0, badCount: 0 },

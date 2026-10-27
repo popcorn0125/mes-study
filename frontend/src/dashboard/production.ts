@@ -42,15 +42,6 @@ export function equipmentName(equipmentId: string): string {
   return PRODUCER_EQUIPMENT.find((e) => e.id === equipmentId)?.name ?? equipmentId
 }
 
-/** 가장 최근에 갱신된 작업지시(지금 진행 중인 작업지시로 본다). 실적이 없으면 undefined */
-export function currentWorkOrderId(rows: readonly ProductionPerformance[]): string | undefined {
-  let latest: ProductionPerformance | undefined
-  for (const row of rows) {
-    if (!latest || Date.parse(row.lastUpdatedAt) > Date.parse(latest.lastUpdatedAt)) latest = row
-  }
-  return latest?.workOrderId
-}
-
 /** 한 작업지시의 실적을 라인 순서로 정렬하고 이름 · 불량률을 붙인다 */
 export function toProductionRows(rows: readonly ProductionPerformance[], workOrderId: string | undefined): ProductionRow[] {
   return rows

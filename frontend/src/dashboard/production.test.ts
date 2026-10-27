@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LatestLog, ProductionPerformance } from '@/api/dashboard'
-import { currentWorkOrderId, formatAgo, formatPercent, summarize, toProductionRows } from './production'
+import { formatAgo, formatPercent, summarize, toProductionRows } from './production'
 
 const NOW = Date.parse('2026-10-26T12:00:00Z')
 
@@ -13,12 +13,6 @@ function log(equipmentId: string, status: LatestLog['status'], secondsAgo: numbe
 }
 
 describe('생산 현황 계산', () => {
-  it('가장 최근에 갱신된 작업지시를 현재 작업지시로 고른다', () => {
-    const rows = [perf('CNC_01', 5, 0, 'WO-OLD', '2026-10-25T09:00:00Z'), perf('CNC_01', 3, 0, 'WO-NEW', '2026-10-26T11:00:00Z')]
-    expect(currentWorkOrderId(rows)).toBe('WO-NEW')
-    expect(currentWorkOrderId([])).toBeUndefined()
-  })
-
   it('작업지시 하나만 남겨 라인 순서로 정렬하고 이름 · 불량률을 붙인다', () => {
     const rows = toProductionRows(
       [perf('PACKER_01', 10, 0), perf('CNC_01', 20, 1), perf('CNC_01', 99, 9, 'WO-OTHER'), perf('NEW_01', 0, 0)],

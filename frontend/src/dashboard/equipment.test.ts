@@ -18,18 +18,19 @@ describe('설비 관리 계산', () => {
     expect(cards[4].disconnected).toBe(true)
   })
 
-  it('상태별 초로 가동률을 계산하고, 정의에 없는 상태는 뺀다', () => {
+  it('상태별 초로 가동률을 계산하고(대기도 전체 시간에 넣는다), 정의에 없는 상태는 뺀다', () => {
     const summary = [
       { equipmentId: 'CNC_01', status: 'RUN', seconds: 90 },
       { equipmentId: 'CNC_01', status: 'DOWN', seconds: 10 },
       { equipmentId: 'CNC_01', status: 'IDLE', seconds: 50 },
+      { equipmentId: 'CNC_01', status: 'SETUP', seconds: 7 },
     ] as StatusSeconds[]
 
     const [cnc, winder] = toUtilization(summary)
 
-    expect(cnc.seconds).toEqual({ RUN: 90, WARN: 0, DOWN: 10 })
-    expect(cnc.totalSeconds).toBe(100)
-    expect(cnc.runRatio).toBeCloseTo(0.9)
+    expect(cnc.seconds).toEqual({ RUN: 90, IDLE: 50, WARN: 0, DOWN: 10 })
+    expect(cnc.totalSeconds).toBe(150)
+    expect(cnc.runRatio).toBeCloseTo(0.6)
     expect(winder.runRatio).toBeUndefined() // 로그 없음
   })
 

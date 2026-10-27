@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { shallowRef } from 'vue'
 import type { Mesh, MeshStandardMaterial } from 'three'
+import { ZERO_COUNT } from '@/producer/generate'
 import { MACHINE_COLOR } from './kinds'
 import MachineBase from './MachineBase.vue'
 import { useEquipmentFrame } from './useEquipmentFrame'
@@ -24,7 +25,7 @@ let lastBad = 0
 
 useEquipmentFrame(props.equipmentId, (eq, { dt, elapsed }) => {
   // 검사 수량이 늘면, 불량 수량이 함께 늘었는지로 방금 나간 작업물의 판정 결과를 램프로 보여 준다
-  const { totalCount, badCount } = eq.production
+  const { totalCount, badCount } = eq.production ?? ZERO_COUNT // 작업지시가 없으면 수량을 보내지 않는다
   if (lastTotal !== null && totalCount > lastTotal) {
     lamp = { result: badCount > lastBad ? 'DEFECT' : 'GOOD', until: elapsed + RESULT_LAMP_SECONDS }
   }

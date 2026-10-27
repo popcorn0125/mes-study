@@ -6,9 +6,17 @@ import java.util.Map;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-/** 작업 실적(production_performance) */
+/** 작업 실적(production_performance)과 생산 이벤트(production_event) */
 @Mapper
 public interface ProductionPerformanceMapper {
+
+    /**
+     * 저장된 누적 수량보다 늘어난 만큼을 생산 이벤트(production_event)로 한 행씩 넣는다. upsertAll 전에 부른다.
+     * 행 키: upsertAll과 같고 occurredAt(OffsetDateTime, 전송 시각)이 더 있다
+     *
+     * @return 넣은 이벤트 수
+     */
+    int insertEvents(@Param("rows") List<Map<String, Object>> rows);
 
     /**
      * (작업지시, 장비)마다 최신 누적 수량을 UPSERT한다. 없으면 추가, 있으면 갱신.

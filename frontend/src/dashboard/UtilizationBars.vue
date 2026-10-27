@@ -4,7 +4,8 @@ import { formatPercent } from './production'
 import { STATUS_ORDER, formatDuration, type Utilization } from './equipment'
 
 /**
- * 설비별 최근 상태 비율을 100% 누적 막대로 보여 주고 가동률(RUN 비율)을 숫자로 붙인다.
+ * 설비별 최근 상태 비율을 100% 누적 막대로 보여 주고 RUN 비율을 숫자로 붙인다.
+ * (작업지시 없는 대기도 분모에 들어가 OEE 가동률과 다르다)
  * 상태 색은 3D 화면과 같고, 범례 · 툴팁(title)에 상태 이름과 시간을 함께 적어 색만으로 읽지 않게 한다.
  */
 const props = defineProps<{
@@ -56,7 +57,7 @@ function ariaLabel(item: Utilization): string {
         </template>
       </div>
       <span class="util__ratio">
-        가동률 <strong>{{ formatPercent(item.runRatio) }}</strong>
+        가동 <strong>{{ formatPercent(item.runRatio) }}</strong>
         <small v-if="item.totalSeconds > 0">{{ formatDuration(item.totalSeconds) }} 중</small>
       </span>
     </div>

@@ -12,7 +12,7 @@ public interface SensorLogMapper {
 
     /**
      * 여러 행을 INSERT 한 번으로 넣는다.
-     * 행 키: equipmentId, recordedAt(OffsetDateTime), status, temperature · vibration(BigDecimal, 없으면 null)
+     * 행 키: equipmentId, recordedAt(OffsetDateTime), status, workOrderId(없으면 null), temperature · vibration(BigDecimal, 없으면 null)
      *
      * @return 넣은 행 수
      */

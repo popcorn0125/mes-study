@@ -3,13 +3,14 @@
 <mapper namespace="com.messtudy.backend.mapper.SensorLogMapper">
 
     <insert id="insertAll">
-        INSERT INTO equipment_sensor_log (equipment_id, recorded_at, status, temperature, vibration)
+        INSERT INTO equipment_sensor_log (equipment_id, recorded_at, status, work_order_id, temperature, vibration)
         VALUES
         <foreach collection="logs" item="log" separator=",">
             (
                 #{log.equipmentId},
                 #{log.recordedAt},
                 #{log.status},
+                #{log.workOrderId, jdbcType=VARCHAR},
                 #{log.temperature, jdbcType=NUMERIC},
                 #{log.vibration, jdbcType=NUMERIC}
             )

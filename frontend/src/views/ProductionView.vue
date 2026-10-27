@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { fetchProduction } from '@/api/dashboard'
 import { fetchCurrentWorkOrder } from '@/api/workOrders'
 import { useNow } from '@/composables/useNow'
@@ -14,11 +14,27 @@ import {
   toProductionRows,
 } from '@/dashboard/production'
 import { estimateFinish, formatDateTime, progressOf } from '@/dashboard/workOrders'
+import { fetchOee, fetchOeeTrend } from '@/api/oee'
+import OeeRangePicker from '@/dashboard/OeeRangePicker.vue'
+import OeeTrendChart from '@/dashboard/OeeTrendChart.vue'
+import { explainLine, formatRatio, toTrendSlots, useOeeRange } from '@/dashboard/oee'
 
-/** 생산 현황: 진행 중 작업지시의 진척과 작업 실적(누적 수량), 설비 가동 여부를 2초마다 다시 읽어 보여 준다 */
+/** 생산 현황: 진행 중 작업지시의 진척, 라인 OEE, 작업 실적(누적 수량), 설비 가동 여부를 2초마다 다시 읽어 보여 준다 */
 const production = usePolling(fetchProduction)
 /** 진행 중 작업지시(서버가 고른 것). 없으면 null */
 const current = usePolling(fetchCurrentWorkOrder)
+
+/** 라인 OEE와 추이. 어느 구간 응답인지 함께 들고 와 구간을 바꾼 직후 늦은 응답이 섞이지 않게 한다 */
+const range = useOeeRange()
+const oee = usePolling(async () => {
+  const r = range.value
+  const [summary, trend] = await Promise.all([fetchOee(r), fetchOeeTrend(r)])
+  return { range: r, summary, trend }
+})
+watch(range, () => void oee.refresh())
+const oeeData = computed(() => (oee.data.value?.range === range.value ? oee.data.value : undefined))
+const lineOee = computed(() => oeeData.value?.summary.line)
+const trendSlots = computed(() => (oeeData.value ? toTrendSlots(oeeData.value.trend) : []))
 // 최신 로그는 레이아웃이 2초마다 한 번 조회한 것을 헤더와 같이 쓴다
 const latest = useLatestLogs()
 
@@ -32,7 +48,7 @@ const rows = computed(() => toProductionRows(production.data.value ?? [], workOr
 const summary = computed(() => summarize(rows.value, latest.data.value ?? [], now.value))
 
 /** 요청 중 하나라도 실패하면 연결 안내를 띄운다 */
-const error = computed(() => production.error.value ?? current.error.value ?? latest.error.value)
+const error = computed(() => production.error.value ?? current.error.value ?? oee.error.value ?? latest.error.value)
 const loading = computed(() => production.loading.value || current.loading.value || latest.loading.value)
 
 const numberFormat = new Intl.NumberFormat('ko-KR')
@@ -90,6 +106,35 @@ const count = (value: number) => (production.data.value === undefined ? '–' : 
       >
         {{ current.loading.value ? '불러오는 중…' : '작업지시를 받지 못했습니다.' }}
       </p>
+    </section>
+
+    <section
+      class="dash-card"
+      aria-label="라인 OEE"
+    >
+      <header class="dash-card__header">
+        <h2>라인 OEE</h2>
+        <OeeRangePicker v-model="range" />
+      </header>
+      <div class="oee-line">
+        <strong class="oee-line__value">{{ lineOee ? formatRatio(lineOee.oee) : '–' }}</strong>
+        <span
+          v-if="lineOee && lineOee.plannedSec > 0"
+          class="oee-line__explain"
+        >{{ explainLine(lineOee) }}</span>
+        <span
+          v-else-if="lineOee"
+          class="oee-line__explain"
+        >이 구간에는 작업지시가 진행된 시간이 없습니다.</span>
+        <span
+          v-else
+          class="oee-line__explain"
+        >{{ oee.loading.value ? '불러오는 중…' : 'OEE를 받지 못했습니다.' }}</span>
+      </div>
+      <OeeTrendChart
+        v-if="oeeData"
+        :slots="trendSlots"
+      />
     </section>
 
     <section

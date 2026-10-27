@@ -104,6 +104,28 @@ describe('더미 센서 데이터', () => {
     expect(resumed.tactElapsed).toBe(1)
   })
 
+  it('경고(WARN) 중에는 1초에 0.75초분만 가공해 같은 1개에 더 오래 걸린다', () => {
+    const before = run(CNC, initialState(CNC), CNC.tactTime - 1)
+    const warn = step(CNC, before, queue(0.01, 0.2, 0.99), Infinity) // 불량 → WARN 5초
+    expect(warn.status).toBe('WARN')
+    // 다음 1개: WARN 4초 동안 3초분, 그 뒤 RUN에서 나머지 42초 → 46초째에 완성(경고 없으면 45초)
+    expect(run(CNC, warn, 4).tactElapsed).toBe(3)
+    expect(run(CNC, warn, CNC.tactTime).production.totalCount).toBe(1)
+    expect(run(CNC, warn, CNC.tactTime + 1).production.totalCount).toBe(2)
+  })
+
+  it('가공 중 가끔 30~60초짜리 속도 저하 경고가 생기고, 가공하지 않을 때는 생기지 않는다', () => {
+    const started = step(CNC, initialState(CNC), steady, Infinity) // 투입
+    // 속도 저하(0.001 < 1/300) → 30초(0)
+    const slow = step(CNC, started, queue(0.001, 0), Infinity)
+    expect(slow).toMatchObject({ status: 'WARN', statusRemaining: 30, tactElapsed: 2 })
+    expect(run(CNC, slow, 29).status).toBe('WARN')
+    expect(run(CNC, slow, 30).status).toBe('RUN')
+
+    const idle = step(CNC, initialState(CNC), queue(0.001, 0), 0)
+    expect(idle.status).toBe('IDLE')
+  })
+
   it('불량률은 약 5%다', () => {
     let state = initialState(CNC)
     state = run(CNC, state, CNC.tactTime * 4000, createRng(2026))

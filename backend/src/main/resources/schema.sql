@@ -52,6 +52,50 @@ INSERT INTO defect_type (defect_code, equipment_id, defect_name, display_order) 
     ('PACKING_LABEL', 'PACKER_01', '라벨 불량', 10)
 ON CONFLICT (defect_code) DO NOTHING;
 
+-- 비가동 사유: 설비가 멈춘 이유. 작업자가 대분류 → 사유로 고른다(비가동 사유 단계)
+CREATE TABLE IF NOT EXISTS downtime_reason (
+    reason_code   VARCHAR(50) PRIMARY KEY,
+    category      VARCHAR(50) NOT NULL,
+    reason_name   VARCHAR(100) NOT NULL,
+    display_order INT NOT NULL
+);
+
+INSERT INTO downtime_reason (reason_code, category, reason_name, display_order) VALUES
+    ('BREAKDOWN_MECH', '설비 고장', '기계 고장', 1),
+    ('BREAKDOWN_ELEC', '설비 고장', '전기 · 제어 고장', 2),
+    ('TOOL_JIG', '설비 고장', '공구 · 지그 문제', 3),
+    ('MATERIAL_SHORTAGE', '자재', '자재 결품', 4),
+    ('MATERIAL_DEFECT', '자재', '자재 불량', 5),
+    ('OPERATOR_ABSENT', '인원', '작업자 부재', 6),
+    ('CHANGEOVER', '준비 · 교체', '모델 교체 · 준비', 7),
+    ('CLEANING_CHECK', '준비 · 교체', '청소 · 점검', 8),
+    ('QUALITY_HOLD', '품질', '품질 확인 대기', 9),
+    ('OTHER', '기타', '기타', 10)
+ON CONFLICT (reason_code) DO NOTHING;
+
+-- 설비 알람: 시뮬레이터(설비)가 고장 정지에 함께 보내는 코드. 알람마다 자동으로 붙일 사유가 정해져 있다
+CREATE TABLE IF NOT EXISTS equipment_alarm (
+    alarm_code   VARCHAR(50) PRIMARY KEY,
+    equipment_id VARCHAR(50) NOT NULL REFERENCES equipment (equipment_id),
+    alarm_name   VARCHAR(100) NOT NULL,
+    reason_code  VARCHAR(50) NOT NULL REFERENCES downtime_reason (reason_code),
+    -- 정지 쪽 외래 키가 (설비, 알람) 쌍을 걸어 다른 설비의 알람 코드를 막는다
+    CONSTRAINT uq_equipment_alarm_equipment UNIQUE (equipment_id, alarm_code)
+);
+
+INSERT INTO equipment_alarm (alarm_code, equipment_id, alarm_name, reason_code) VALUES
+    ('CNC_SPINDLE_OVERLOAD', 'CNC_01', '스핀들 과부하', 'BREAKDOWN_MECH'),
+    ('CNC_TOOL_BREAK', 'CNC_01', '공구 파손', 'TOOL_JIG'),
+    ('WINDER_WIRE_BREAK', 'WINDER_01', '선 끊김', 'BREAKDOWN_MECH'),
+    ('WINDER_TENSION', 'WINDER_01', '장력 제어 이상', 'BREAKDOWN_ELEC'),
+    ('ROBOT_SERVO', 'ASSEMBLY_01', '서보 알람', 'BREAKDOWN_ELEC'),
+    ('ROBOT_GRIPPER', 'ASSEMBLY_01', '그리퍼 이상', 'TOOL_JIG'),
+    ('INSPECTION_SENSOR', 'INSPECTION_01', '측정 센서 이상', 'BREAKDOWN_ELEC'),
+    ('INSPECTION_JIG', 'INSPECTION_01', '검사 지그 이상', 'TOOL_JIG'),
+    ('PACKER_JAM', 'PACKER_01', '포장재 걸림', 'BREAKDOWN_MECH'),
+    ('PACKER_FILM_EMPTY', 'PACKER_01', '포장재 소진', 'MATERIAL_SHORTAGE')
+ON CONFLICT (alarm_code) DO NOTHING;
+
 -- ── 작업지시 ─────────────────────────────────────────────
 
 -- 작업지시: PLANNED(계획) → RELEASED(하달) → IN_PROGRESS(진행) → COMPLETED(완료), HELD(보류)
@@ -149,6 +193,28 @@ CREATE TABLE IF NOT EXISTS defect_event (
 
 CREATE INDEX IF NOT EXISTS defect_event_occurred_at_idx ON defect_event (occurred_at);
 CREATE INDEX IF NOT EXISTS defect_event_work_order_idx ON defect_event (work_order_id, occurred_at);
+
+-- 정지(비가동) 한 건: 설비의 DOWN 로그가 5초 안으로 이어지는 동안 한 건. duration_sec = 이어 붙인 DOWN 행 수(= 초).
+-- 알람이 있으면 알람의 사유를 자동(AUTO)으로 넣고, 작업자가 넣거나 고치면 MANUAL과 입력자 · 시각이 남는다
+CREATE TABLE IF NOT EXISTS downtime (
+    id            BIGSERIAL PRIMARY KEY,
+    equipment_id  VARCHAR(50) NOT NULL REFERENCES equipment (equipment_id),
+    work_order_id VARCHAR(50),
+    started_at    TIMESTAMPTZ NOT NULL,
+    last_seen_at  TIMESTAMPTZ NOT NULL,
+    duration_sec  INT NOT NULL CHECK (duration_sec > 0),
+    alarm_code    VARCHAR(50),
+    reason_code   VARCHAR(50) REFERENCES downtime_reason (reason_code),
+    reason_source VARCHAR(10) CHECK (reason_source IN ('AUTO', 'MANUAL')),
+    reason_by     VARCHAR(100),
+    reason_at     TIMESTAMPTZ,
+    FOREIGN KEY (equipment_id, alarm_code) REFERENCES equipment_alarm (equipment_id, alarm_code)
+);
+
+-- 수신: 설비의 마지막 정지 찾기
+CREATE INDEX IF NOT EXISTS downtime_equipment_last_seen_idx ON downtime (equipment_id, last_seen_at DESC);
+-- 구간 조회: 구간 시작 뒤에 끝난(마지막으로 본) 정지만 읽는다
+CREATE INDEX IF NOT EXISTS downtime_last_seen_at_idx ON downtime (last_seen_at);
 
 -- 대시보드 조회용 인덱스. 최신 1건 · 최근 n분 추이 · 상태 비율 · 상태 변경 이력이 모두 "최근 시간 범위"를 읽는다.
 -- 설비 5대 기준 실험에서 recorded_at 단일이 조회 4개를 모두 5ms 안에 끝냈고, 복합 인덱스보다 3배 작았다

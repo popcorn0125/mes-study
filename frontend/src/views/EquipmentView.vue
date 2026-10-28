@@ -2,7 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchRecentLogs, fetchStatusChanges, fetchStatusSummary } from '@/api/dashboard'
+import { fetchDowntimeReasons, fetchDowntimes, fetchDowntimeSummary } from '@/api/downtime'
 import { fetchOee } from '@/api/oee'
+import { currentUser } from '@/auth/session'
+import DowntimeList from '@/dashboard/DowntimeList.vue'
+import ParetoBars from '@/dashboard/ParetoBars.vue'
+import { toDowntimeParetoRows } from '@/dashboard/downtime'
 import OeeBreakdown from '@/dashboard/OeeBreakdown.vue'
 import OeeRangePicker from '@/dashboard/OeeRangePicker.vue'
 import { useOeeRange } from '@/dashboard/oee'
@@ -24,7 +29,7 @@ const STATUS_MINUTES = 60
 
 /**
  * 설비 관리: 설비 5대의 현재 상태 카드, 선택한 설비의 온도 · 진동 추이와 상태 변경 이력,
- * 전체 설비의 최근 1시간 가동률을 2초마다 다시 읽어 보여 준다.
+ * 전체 설비의 최근 1시간 가동률, 비가동(정지) 사유 파레토 · 사유 입력을 2초마다 다시 읽어 보여 준다.
  */
 const route = useRoute()
 const router = useRouter()
@@ -92,7 +97,26 @@ const oee = usePolling(async () => {
 watch(oeeRange, () => void oee.refresh())
 const oeeEquipment = computed(() => (oee.data.value?.range === oeeRange.value ? oee.data.value.summary.equipment : undefined))
 
-const error = computed(() => latest.error.value ?? summary.error.value ?? oee.error.value ?? trend.error.value ?? changes.error.value)
+/** 비가동: 구간은 OEE와 같이 쓴다. 요약 · 목록을 함께 읽고 어느 구간 · 거르기 응답인지 들고 온다 */
+const pendingOnly = ref(false)
+const downtime = usePolling(async () => {
+  const range = oeeRange.value
+  const pending = pendingOnly.value
+  const [report, downtimes] = await Promise.all([fetchDowntimeSummary(range), fetchDowntimes(range, pending)])
+  return { range, pending, report, downtimes }
+})
+watch([oeeRange, pendingOnly], () => void downtime.refresh())
+const downtimeData = computed(() => {
+  const data = downtime.data.value
+  return data?.range === oeeRange.value && data.pending === pendingOnly.value ? data : undefined
+})
+const downtimeRows = computed(() => toDowntimeParetoRows(downtimeData.value?.report.reasons ?? []))
+/** 사유 목록은 기준정보라 1분마다만 다시 읽는다 */
+const reasons = usePolling(fetchDowntimeReasons, 60_000)
+const reasonList = computed(() => reasons.data.value ?? [])
+
+const error = computed(() => latest.error.value ?? summary.error.value ?? oee.error.value ?? downtime.error.value
+  ?? trend.error.value ?? changes.error.value)
 </script>
 
 <template>
@@ -131,6 +155,95 @@ const error = computed(() => latest.error.value ?? summary.error.value ?? oee.er
         v-else
         :equipment="oeeEquipment"
       />
+    </section>
+
+    <section
+      class="dash-card"
+      aria-label="비가동"
+    >
+      <header class="dash-card__header">
+        <h2>비가동</h2>
+        <OeeRangePicker
+          v-model="oeeRange"
+          label="비가동 조회 구간"
+        />
+      </header>
+      <div class="dash-kpis">
+        <div class="dash-kpi">
+          <span class="dash-kpi__label">정지 시간 (고장 DOWN 전체)</span>
+          <strong class="dash-kpi__value">{{ downtimeData ? formatDuration(downtimeData.report.summary.downSec) : '–' }}</strong>
+        </div>
+        <div class="dash-kpi">
+          <span class="dash-kpi__label">정지 수 (60초 이상)</span>
+          <strong class="dash-kpi__value">{{ downtimeData?.report.summary.stopCount ?? '–' }}<small>건</small></strong>
+        </div>
+        <div
+          class="dash-kpi"
+          :class="{ 'dash-kpi--attention': (downtimeData?.report.summary.pendingCount ?? 0) > 0 }"
+        >
+          <span class="dash-kpi__label">사유 미입력</span>
+          <strong class="dash-kpi__value">{{ downtimeData?.report.summary.pendingCount ?? '–' }}<small>건</small></strong>
+        </div>
+        <div class="dash-kpi">
+          <span class="dash-kpi__label">순간 정지 (60초 미만)</span>
+          <strong class="dash-kpi__value">{{ downtimeData ? formatDuration(downtimeData.report.summary.microSec) : '–' }}</strong>
+        </div>
+      </div>
+      <p
+        v-if="!downtimeData"
+        class="dash-empty"
+      >
+        {{ downtime.loading.value ? '불러오는 중…' : '비가동 데이터를 받지 못했습니다.' }}
+      </p>
+      <div
+        v-else
+        class="eq-bottom downtime-body"
+      >
+        <div>
+          <h3>사유 파레토 <span>정지 시간 많은 순</span></h3>
+          <p
+            v-if="downtimeRows.length === 0"
+            class="dash-empty"
+          >
+            이 구간에는 정지가 없습니다.
+          </p>
+          <template v-else>
+            <ParetoBars
+              :rows="downtimeRows"
+              label="비가동 사유 파레토(정지 시간 많은 순)"
+            />
+            <p class="oee-help">
+              굵은 사유부터 줄이면 가동률이 가장 많이 오릅니다. 사유 미입력은 오른쪽 목록에서 사유를 넣으면 해당 사유로 옮겨 갑니다.
+              순간 정지(60초 미만, 주로 불량 뒤 정지)는 사유를 받지 않습니다.
+            </p>
+          </template>
+        </div>
+        <div>
+          <h3 class="downtime-list__head">
+            정지 목록 <span>60초 이상 · 진행 중 먼저</span>
+            <label class="downtime-filter">
+              <input
+                v-model="pendingOnly"
+                type="checkbox"
+              >
+              사유 입력 대기만
+            </label>
+          </h3>
+          <p
+            v-if="downtimeData.downtimes.length === 0"
+            class="dash-empty"
+          >
+            {{ pendingOnly ? '사유를 기다리는 정지가 없습니다.' : '이 구간에는 60초 이상 정지가 없습니다.' }}
+          </p>
+          <DowntimeList
+            v-else
+            :downtimes="downtimeData.downtimes"
+            :reasons="reasonList"
+            :entered-by="currentUser?.name"
+            @saved="downtime.refresh()"
+          />
+        </div>
+      </div>
     </section>
 
     <section class="dash-card">

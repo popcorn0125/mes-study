@@ -21,6 +21,8 @@ export interface SensorLog {
   equipmentId: string
   timestamp: string
   status: SensorStatus
+  /** 알람 고장(DOWN)일 때만: 설비 알람 코드. 서버가 알람의 사유를 자동으로 붙인다 */
+  alarmCode?: string
   workOrderId?: string
   metrics: Metrics
   production?: ProductionCount
@@ -32,6 +34,8 @@ export interface EquipmentState {
   status: SensorStatus
   /** WARN · DOWN이 앞으로 유지될 초. 0이 되면 RUN(가공 중) 또는 IDLE(대기)로 돌아온다. */
   statusRemaining: number
+  /** 알람 고장으로 DOWN인 동안의 알람 코드. 그 밖에는 undefined */
+  alarmCode: string | undefined
   /** 지금 1개를 가공하고 있는지(투입했고 아직 완성 전) */
   inProcess: boolean
   /** 지금 가공 중인 1개에 쓴 가동 시간(초). 택트 타임에 이르면 완성한다. */
@@ -53,6 +57,12 @@ export const WARN_SPEED = 0.75
 export const SLOWDOWN_CHANCE = 1 / 300
 /** 속도 저하 경고가 이어지는 시간(초): 30 ~ 60 */
 export const SLOWDOWN_SECONDS: Range = [30, 60]
+/** 가공 중 1초마다 알람 고장(DOWN + 알람 코드)이 시작될 확률(평균 가공 40분에 한 번) */
+export const FAULT_CHANCE = 1 / 2400
+/** 가공 중 1초마다 알람 없는 정지(DOWN, 자재 결품 · 작업자 부재 등 설비가 모르는 이유)가 시작될 확률(평균 가공 60분에 한 번) */
+export const STOP_CHANCE = 1 / 3600
+/** 알람 고장 · 알람 없는 정지가 이어지는 시간(초): 60 ~ 180. 60초 이상이라 서버가 사유를 받는다 */
+export const LONG_STOP_SECONDS: Range = [60, 180]
 /** 측정값이 1초에 움직이는 최대 폭(정상 범위 폭에 대한 비율) */
 export const METRIC_STEP_RATIO = 0.05
 
@@ -67,6 +77,7 @@ export function initialState(eq: ProducerEquipment, production: ProductionCount 
     equipmentId: eq.id,
     status: 'IDLE',
     statusRemaining: 0,
+    alarmCode: undefined,
     inProcess: false,
     tactElapsed: 0,
     metrics: { temperature: mid(eq.temperature), vibration: mid(eq.vibration) },
@@ -98,16 +109,19 @@ export function driftIn(value: number, [min, max]: Range, random: Random): numbe
  *   불량이 나면 설비의 유형 중 하나를 비중대로 골라 세고, WARN 또는 DOWN(반반)으로 3~5초 바뀐다.
  * - WARN 동안은 느리게 가공한다(1초에 WARN_SPEED초분).
  * - 경고 · 고장 없이 가공 중이면 가끔(SLOWDOWN_CHANCE) 30~60초짜리 속도 저하 경고(WARN)가 시작된다.
+ *   그렇지 않으면 가끔 60~180초짜리 알람 고장(FAULT_CHANCE, 알람 코드 하나) 또는 알람 없는 정지(STOP_CHANCE)가 시작된다.
  * - 경고 · 고장이 아니면 가공 중일 때 RUN, 만들 것이 없으면 IDLE이다.
  * - 온도 · 진동은 매초 조금씩 움직인다.
  */
 export function step(eq: ProducerEquipment, prev: EquipmentState, random: Random, supply: number): EquipmentState {
   let statusRemaining = prev.statusRemaining
   let alert: SensorStatus | undefined = prev.status === 'WARN' || prev.status === 'DOWN' ? prev.status : undefined
+  let alarmCode = alert === 'DOWN' ? prev.alarmCode : undefined
   if (alert) {
     statusRemaining -= 1
     if (statusRemaining <= 0) {
       alert = undefined
+      alarmCode = undefined
       statusRemaining = 0
     }
   }
@@ -142,11 +156,22 @@ export function step(eq: ProducerEquipment, prev: EquipmentState, random: Random
         }
       }
     }
-    // 완성한 초에는 굴리지 않는다(불량 판정과 난수 순서가 섞이지 않게)
-    if (inProcess && !alert && random() < SLOWDOWN_CHANCE) {
-      alert = 'WARN'
-      const [min, max] = SLOWDOWN_SECONDS
-      statusRemaining = min + Math.floor(random() * (max - min + 1))
+    // 불량이 난 초에는 굴리지 않는다(불량 판정과 난수 순서가 섞이지 않게).
+    // 긴 정지는 속도 저하 다음에 굴린다(앞의 난수 순서를 바꾸지 않게)
+    if (inProcess && !alert) {
+      if (random() < SLOWDOWN_CHANCE) {
+        alert = 'WARN'
+        const [min, max] = SLOWDOWN_SECONDS
+        statusRemaining = min + Math.floor(random() * (max - min + 1))
+      } else {
+        const r = random()
+        if (r < FAULT_CHANCE + STOP_CHANCE) {
+          alert = 'DOWN'
+          const [min, max] = LONG_STOP_SECONDS
+          statusRemaining = min + Math.floor(random() * (max - min + 1))
+          if (r < FAULT_CHANCE) alarmCode = eq.alarms[Math.floor(random() * eq.alarms.length)]
+        }
+      }
     }
   }
 
@@ -157,6 +182,7 @@ export function step(eq: ProducerEquipment, prev: EquipmentState, random: Random
     equipmentId: prev.equipmentId,
     status: alert ?? (busy ? 'RUN' : 'IDLE'),
     statusRemaining,
+    alarmCode: alert === 'DOWN' ? alarmCode : undefined,
     inProcess,
     tactElapsed,
     metrics: {
@@ -175,6 +201,7 @@ export function toLog(state: EquipmentState, workOrderId: string | undefined, no
     status: state.status,
     metrics: state.metrics,
   }
+  if (state.status === 'DOWN' && state.alarmCode) log.alarmCode = state.alarmCode
   if (workOrderId) {
     log.workOrderId = workOrderId
     log.production = state.production

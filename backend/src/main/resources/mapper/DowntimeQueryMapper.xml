@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.messtudy.backend.mapper.DowntimeQueryMapper">
+
+    <!-- 정지 [started_at, last_seen_at + 1초)와 구간 [from, to)가 겹친 정지만 읽는다.
+         last_seen_at 인덱스로 구간 시작 뒤에 끝난 정지만 고른 뒤 시작 시각으로 거른다(열에 계산을 붙이지 않아야 인덱스를 탄다) -->
+    <sql id="overlapping">
+        FROM downtime d
+        WHERE d.last_seen_at &gt; #{from} - INTERVAL '1 second'
+          AND d.started_at &lt; #{to}
+    </sql>
+
+    <!-- 겹친 초. 수신이 빠진 초는 정지 길이(DOWN 행 수)에 없으므로 그 길이를 넘지 않게 자른다 -->
+    <sql id="overlapSec">
+        LEAST(d.duration_sec,
+              EXTRACT(EPOCH FROM LEAST(d.last_seen_at + INTERVAL '1 second', #{to}) - GREATEST(d.started_at, #{from}))::int)
+    </sql>
+
+    <select id="findReasons" resultType="map">
+        SELECT reason_code AS "reasonCode", category AS "category", reason_name AS "reasonName"
+        FROM downtime_reason
+        ORDER BY display_order
+    </select>
+
+    <select id="sumByKind" resultType="map">
+        SELECT
+            k.kind                AS "kind",
+            k.reason_code         AS "reasonCode",
+            r.reason_name         AS "reasonName",
+            r.category            AS "category",
+            r.display_order       AS "displayOrder",
+            sum(k.sec)            AS "seconds",
+            count(*)              AS "count"
+        FROM (
+            SELECT
+                CASE WHEN d.reason_code IS NOT NULL THEN 'REASON'
+                     WHEN d.duration_sec &gt;= #{minSec} THEN 'PENDING'
+                     ELSE 'MICRO' END AS kind,
+                d.reason_code,
+                <include refid="overlapSec"/> AS sec
+            <include refid="overlapping"/>
+        ) k
+        LEFT JOIN downtime_reason r ON r.reason_code = k.reason_code
+        GROUP BY k.kind, k.reason_code, r.reason_name, r.category, r.display_order
+    </select>
+
+    <sql id="columns">
+        SELECT
+            d.id                                                 AS "id",
+            d.equipment_id                                       AS "equipmentId",
+            e.equipment_name                                     AS "equipmentName",
+            d.work_order_id                                      AS "workOrderId",
+            d.started_at                                         AS "startedAt",
+            d.last_seen_at                                       AS "lastSeenAt",
+            d.duration_sec                                       AS "durationSec",
+            d.last_seen_at &gt;= now() - INTERVAL '10 seconds'  AS "ongoing",
+            d.alarm_code                                         AS "alarmCode",
+            a.alarm_name                                         AS "alarmName",
+            d.reason_code                                        AS "reasonCode",
+            r.reason_name                                        AS "reasonName",
+            r.category                                           AS "category",
+            d.reason_source                                      AS "reasonSource",
+            d.reason_by                                          AS "reasonBy",
+            d.reason_at                                          AS "reasonAt"
+    </sql>
+
+    <sql id="joins">
+        JOIN equipment e ON e.equipment_id = d.equipment_id
+        LEFT JOIN equipment_alarm a ON a.alarm_code = d.alarm_code
+        LEFT JOIN downtime_reason r ON r.reason_code = d.reason_code
+    </sql>
+
+    <select id="findAll" resultType="map">
+        <include refid="columns"/>
+        FROM downtime d
+        <include refid="joins"/>
+        WHERE d.last_seen_at &gt; #{from} - INTERVAL '1 second'
+          AND d.started_at &lt; #{to}
+          AND (d.duration_sec &gt;= #{minSec} OR d.last_seen_at &gt;= now() - INTERVAL '10 seconds')
+          <if test="pendingOnly">AND d.reason_code IS NULL</if>
+        ORDER BY (d.last_seen_at &gt;= now() - INTERVAL '10 seconds') DESC, d.started_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findById" resultType="map">
+        <include refid="columns"/>
+        FROM downtime d
+        <include refid="joins"/>
+        WHERE d.id = #{id}
+    </select>
+
+    <update id="updateReason">
+        UPDATE downtime
+        SET reason_code = #{reasonCode}, reason_source = 'MANUAL', reason_by = #{enteredBy}, reason_at = now()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

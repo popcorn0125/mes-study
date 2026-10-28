@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,6 +13,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import com.messtudy.backend.mapper.DowntimeMapper;
 import com.messtudy.backend.mapper.ProductionPerformanceMapper;
 import com.messtudy.backend.mapper.SensorLogMapper;
 
@@ -58,7 +60,26 @@ class SensorLogServiceTest {
         }
     };
     private final List<Map<String, Object>> defectRows = new ArrayList<>();
-    private final SensorLogService service = new SensorLogService(sensorLogMapper, productionMapper);
+    /** 새로 만든 정지(DowntimeMapper.insert에 넘긴 행). 가짜는 마지막 정지가 늘 없다고 답한다 */
+    private final List<Map<String, Object>> startedDowntimes = new ArrayList<>();
+    private final DowntimeMapper downtimeMapper = new DowntimeMapper() {
+        @Override
+        public Map<String, Object> findLatest(String equipmentId) {
+            return null;
+        }
+
+        @Override
+        public int extend(long id, Object recordedAt) {
+            throw new AssertionError("마지막 정지가 없으므로 이어 붙이지 않는다");
+        }
+
+        @Override
+        public int insert(Map<String, Object> row) {
+            startedDowntimes.add(row);
+            return 1;
+        }
+    };
+    private final SensorLogService service = new SensorLogService(sensorLogMapper, productionMapper, downtimeMapper);
 
     /** 프론트가 보내는 것과 같은 모양의 항목(Jackson처럼 숫자는 Integer · Double) */
     private static Map<String, Object> item(String equipmentId, int totalCount) {
@@ -248,5 +269,54 @@ class SensorLogServiceTest {
         assertThatThrownBy(() -> service.save(List.of(item)))
                 .isInstanceOf(InvalidPayloadException.class)
                 .hasMessageContaining(expectedPath);
+    }
+
+    @Test
+    void 고장_행만_정지로_넘기고_알람_코드를_붙인다() {
+        Map<String, Object> down = item("CNC_01", 3);
+        down.put("status", "DOWN");
+        down.put("alarmCode", "CNC_TOOL_BREAK");
+        Map<String, Object> quietDown = item("WINDER_01", 3);
+        quietDown.put("status", "DOWN");
+
+        service.save(List.of(item("ASSEMBLY_01", 3), down, quietDown));
+
+        assertThat(startedDowntimes).extracting(row -> row.get("equipmentId")).containsExactly("CNC_01", "WINDER_01");
+        assertThat(startedDowntimes.get(0)).containsEntry("alarmCode", "CNC_TOOL_BREAK")
+                .containsEntry("workOrderId", "WO-20261024-001")
+                .containsEntry("recordedAt", OffsetDateTime.parse("2026-10-24T23:37:12.451Z"));
+        assertThat(startedDowntimes.get(1)).containsEntry("alarmCode", null);
+        assertThat(insertedLogs.get(1)).doesNotContainKey("alarmCode"); // 센서 로그에는 알람을 남기지 않는다
+    }
+
+    @Test
+    void 고장이_아닌_행에_알람_코드가_있으면_예외다() {
+        Map<String, Object> run = item("CNC_01", 3);
+        run.put("alarmCode", "CNC_TOOL_BREAK");
+        Map<String, Object> notText = item("CNC_01", 3);
+        notText.put("status", "DOWN");
+        notText.put("alarmCode", 7);
+
+        assertThatThrownBy(() -> service.save(List.of(run))).isInstanceOf(InvalidPayloadException.class)
+                .hasMessageContaining("[0].alarmCode: 고장(DOWN)일 때만");
+        assertThatThrownBy(() -> service.save(List.of(notText))).isInstanceOf(InvalidPayloadException.class)
+                .hasMessageContaining("[0].alarmCode");
+        assertThat(insertedLogs).isEmpty();
+    }
+
+    @Test
+    void 마지막_정지에서_5초_안이고_알람이_같으면_이어_붙인다() {
+        Instant last = Instant.parse("2026-10-24T23:37:12Z");
+        Map<String, Object> latest = new HashMap<>(Map.of("lastSeenAt", OffsetDateTime.parse("2026-10-24T23:37:12Z")));
+        latest.put("alarmCode", null);
+
+        assertThat(SensorLogService.downtimeAction(null, last, null)).isEqualTo(SensorLogService.DowntimeAction.START);
+        assertThat(SensorLogService.downtimeAction(latest, last.plusSeconds(1), null)).isEqualTo(SensorLogService.DowntimeAction.EXTEND);
+        assertThat(SensorLogService.downtimeAction(latest, last.plusSeconds(5), null)).isEqualTo(SensorLogService.DowntimeAction.EXTEND);
+        assertThat(SensorLogService.downtimeAction(latest, last.plusSeconds(6), null)).isEqualTo(SensorLogService.DowntimeAction.START);
+        assertThat(SensorLogService.downtimeAction(latest, last.plusSeconds(1), "CNC_TOOL_BREAK")).isEqualTo(SensorLogService.DowntimeAction.START);
+        // 같은 요청이 다시 왔거나 늦게 온 옛 요청
+        assertThat(SensorLogService.downtimeAction(latest, last, null)).isEqualTo(SensorLogService.DowntimeAction.SKIP);
+        assertThat(SensorLogService.downtimeAction(latest, last.minusSeconds(3), null)).isEqualTo(SensorLogService.DowntimeAction.SKIP);
     }
 }

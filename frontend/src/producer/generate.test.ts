@@ -126,6 +126,57 @@ describe('더미 센서 데이터', () => {
     expect(idle.status).toBe('IDLE')
   })
 
+  it('가공 중 가끔 60~180초짜리 알람 고장 · 알람 없는 정지가 생기고, 그동안 가공이 멈춘다', () => {
+    const started = step(CNC, initialState(CNC), steady, Infinity) // 투입(가공 1초)
+    // 속도 저하 아님(0.5) → 알람 고장(0.0001 < 1/2400) → 60초(0) → 알람 2개 중 두 번째(0.6)
+    const fault = step(CNC, started, queue(0.5, 0.0001, 0, 0.6), Infinity)
+    expect(fault).toMatchObject({ status: 'DOWN', statusRemaining: 60, alarmCode: 'CNC_TOOL_BREAK', tactElapsed: 2 })
+    const still = run(CNC, fault, 59)
+    expect(still).toMatchObject({ status: 'DOWN', alarmCode: 'CNC_TOOL_BREAK', tactElapsed: 2 })
+    expect(run(CNC, fault, 60)).toMatchObject({ status: 'RUN', alarmCode: undefined, tactElapsed: 3 })
+
+    // 알람 없는 정지(1/2400 ≤ 0.0005 < 1/2400 + 1/3600) → 180초(0.999)
+    const quiet = step(CNC, started, queue(0.5, 0.0005, 0.999), Infinity)
+    expect(quiet).toMatchObject({ status: 'DOWN', statusRemaining: 180, alarmCode: undefined })
+    expect(step(CNC, started, queue(0.5, 0.001), Infinity).status).toBe('RUN')
+  })
+
+  it('알람 고장 중 전송 로그에만 알람 코드가 있고, 불량 뒤 짧은 고장에는 없다', () => {
+    const at = new Date('2026-10-24T23:37:12.451Z')
+    const started = step(CNC, initialState(CNC), steady, Infinity)
+    const fault = step(CNC, started, queue(0.5, 0.0001, 0, 0), Infinity)
+    expect(toLog(fault, 'WO-20261024-001', at).alarmCode).toBe('CNC_SPINDLE_OVERLOAD')
+    expect(toLog(started, 'WO-20261024-001', at)).not.toHaveProperty('alarmCode')
+
+    const before = run(CNC, initialState(CNC), CNC.tactTime - 1)
+    const down = step(CNC, before, queue(0.01, 0.7, 0), Infinity) // 불량 → DOWN 3초
+    expect(down.status).toBe('DOWN')
+    expect(toLog(down, 'WO-20261024-001', at)).not.toHaveProperty('alarmCode')
+  })
+
+  it('모든 설비에 알람이 2개씩 있고, 오래 돌리면 긴 정지가 확률대로 생긴다', () => {
+    for (const eq of PRODUCER_EQUIPMENT) expect(eq.alarms).toHaveLength(2)
+    const random = createRng(11)
+    let state = initialState(CNC)
+    let faults = 0
+    let quiet = 0
+    for (let i = 0; i < 200_000; i++) {
+      const next = step(CNC, state, random, Infinity)
+      if (next.status === 'DOWN' && next.statusRemaining >= 59 && state.status !== 'DOWN') {
+        if (next.alarmCode) {
+          expect(CNC.alarms).toContain(next.alarmCode)
+          faults++
+        } else quiet++
+      }
+      state = next
+    }
+    // 가공 시간(대략 18만 초)에 알람 고장 약 75번, 알람 없는 정지 약 50번
+    expect(faults).toBeGreaterThan(40)
+    expect(faults).toBeLessThan(110)
+    expect(quiet).toBeGreaterThan(20)
+    expect(quiet).toBeLessThan(80)
+  })
+
   it('불량 유형은 설비의 유형 중 비중대로 고르고, 저장된 유형별 수에 이어 센다', () => {
     const types = CNC.defectTypes
     expect(pickDefect(types, 0)).toBe('MACHINING_DIMENSION')

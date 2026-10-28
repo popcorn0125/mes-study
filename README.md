@@ -12,7 +12,7 @@
 
 ### 관리자 모드
 
-MES 기능 단위로 메뉴를 나눴습니다. 서버에 저장된 데이터로 채운 화면은 생산 현황 · 작업지시 관리 · 설비 관리 · 품질 관리 네 개이고, 아직 데이터가 없는 메뉴는 사이드바에서 숨겼습니다(주소로는 열리는 빈 페이지). 앞으로의 순서는 [MES 기능 로드맵](docs/plans/mes-roadmap.md)(작업지시 → OEE → 품질, 세 단계 모두 마침)에 있습니다.
+MES 기능 단위로 메뉴를 나눴습니다. 서버에 저장된 데이터로 채운 화면은 생산 현황 · 작업지시 관리 · 설비 관리 · 품질 관리 네 개이고, 아직 데이터가 없는 메뉴는 사이드바에서 숨겼습니다(주소로는 열리는 빈 페이지). 앞으로의 순서는 [MES 기능 로드맵](docs/plans/mes-roadmap.md)(작업지시 → OEE → 품질, 세 단계 모두 마침)에 있고, 그 뒤로 [비가동 사유](docs/plans/downtime.md)를 붙였습니다.
 
 | 페이지 | MES 기능 | 상태 |
 |---|---|---|
@@ -56,10 +56,15 @@ MES 기능 단위로 메뉴를 나눴습니다. 서버에 저장된 데이터로
 
 #### 설비 관리
 
-![설비 관리 — 설비 상태 카드, 설비별 OEE, 온도 · 진동 추이, 상태 비율, 상태 변경 이력](docs/images/dashboard-equipment.png)
+![설비 관리 — 설비 상태 카드, 설비별 OEE, 비가동 사유 파레토 · 정지 목록, 온도 · 진동 추이, 상태 비율, 상태 변경 이력](docs/images/dashboard-equipment.png)
 
 - **상태 카드**: 상태(가동 · 대기 · 경고 · 고장, 3D와 같은 색) · 온도 · 진동 · 정상 범위. 범위를 벗어난 값은 빨간색, 5초 넘게 수신이 없으면 "통신 끊김". 카드를 누르면 아래 내용이 그 설비로 바뀝니다.
 - **설비별 OEE**: OEE와 가동률 · 성능 · 품질 막대(값을 글자로 같이 표시), 가장 큰 손실(고장 · 대기 · 속도 저하 · 불량, 초). 구간은 생산 현황과 같이 씁니다. 아래 [OEE 계산](#oee-계산) 참고.
+- **비가동**: 고장(DOWN)이 이어진 동안을 정지 한 건으로 묶어 사유를 받습니다.
+  - 알람이 있는 고장은 알람에 연결된 사유가 **자동**으로 붙습니다(예: 포장재 소진 → 자재 결품).
+  - 알람 없이 60초 이상 멈춘 정지는 **사유 입력 대기**로 목록에 남고, 작업자가 대분류별 선택 상자에서 사유를 고릅니다. 자동 사유도 고칠 수 있고, 입력자(로그인 이름) · 시각이 남습니다.
+  - 60초 미만 정지(주로 불량 뒤 3~5초)는 **순간 정지**로 묶고 사유를 받지 않습니다.
+  - 사유 파레토(정지 시간 많은 순, 누적 80%까지 굵게, 사유 미입력 · 순간 정지는 뒤에 따로)와 KPI(정지 시간 · 정지 수 · 사유 미입력 · 순간 정지). 구간은 OEE와 같이 씁니다. 설계: [downtime.md](docs/plans/downtime.md)
 - **온도 · 진동 추이**: 선택한 설비의 최근 10분, 정상 범위를 띠로 표시. 단위가 달라 차트를 둘로 나눴습니다.
 - **상태 비율**: 설비별 최근 60분 상태 비율(로그 1건 = 1초). 작업지시가 없던 대기도 들어가는 단순 비율이라 OEE 가동률과 다릅니다.
 - **상태 변경 이력**: 선택한 설비의 최근 60분 상태 구간(`LAG` 윈도 함수). 5초 넘게 수신이 끊긴 곳도 구간을 나눕니다.
@@ -98,11 +103,12 @@ OEE(설비 종합 효율) = 가동률 × 성능 × 품질. 센서 로그 1행 = 
 - **시작**: `POST /api/v1/producer/runs`로 실행 ID와 진행 중 작업지시 · 설비별 저장 수량을 받아 **그 수량부터 이어 셉니다**(새로 고쳐도 0부터 다시 세지 않음). 서버가 꺼져 있으면 3초마다 다시 시도합니다.
 - **전송**: 1초(`setInterval` 1000ms)마다 `POST /api/v1/sensor-logs/bulk`에 실행 ID 헤더(`X-Producer-Run-Id`)를 붙여 보냅니다. 응답에 담긴 진행 중 지시가 바뀌면 그 지시의 저장 수량을 받아 갈아탑니다.
 - **한 탭만 전송**: 시뮬레이터를 다른 탭에서 열면 나중 탭이 넘겨받고, 먼저 탭은 409를 받아 "다른 탭에서 실행 중" 안내와 함께 전송을 멈춥니다("이 탭에서 다시 시작"으로 되찾기).
-- **데이터**: 설비별 `equipmentId`, `timestamp`(ISO, 밀리초 포함), `status`, `workOrderId`, `metrics`(온도 · 진동), `production`(누적 총수량 · 양품 · 불량, `defects`: 유형 코드별 누적 불량). 진행 중 지시가 없으면 `workOrderId` · `production`을 빼고 보냅니다.
+- **데이터**: 설비별 `equipmentId`, `timestamp`(ISO, 밀리초 포함), `status`, `alarmCode`(알람 고장 중일 때만), `workOrderId`, `metrics`(온도 · 진동), `production`(누적 총수량 · 양품 · 불량, `defects`: 유형 코드별 누적 불량). 진행 중 지시가 없으면 `workOrderId` · `production`을 빼고 보냅니다.
 - **센서 주기(1초)**: 온도 · 진동은 직전 값에서 매초 조금씩(정상 범위 폭의 ±5% 안) 움직이고, 설비별 정상 범위를 벗어나지 않습니다(소수점 첫째 자리).
 - **라인 생산(공정 연결)**: 뒤 공정은 앞 공정이 넘겨준 양품이 있어야 1개를 투입하고, 택트 타임(CNC 45초 · 권선 40초 · 조립 50초 · 검사 30초 · 포장 25초) 뒤 완성합니다(95% 양품 · 5% 불량, 불량은 뒤로 넘어가지 않음). 첫 공정은 불량으로 버려진 만큼 더 투입해 결국 지시 수량을 정확히 채웁니다. 가장 느린 조립이 병목이 됩니다.
 - **불량 유형**: 불량이 나면 그 설비의 유형 2개 중 하나를 비중대로 고릅니다(예: 조립은 체결 불량 70% · 부품 누락 30%). 유형 목록은 서버 기준정보(`defect_type`)와 같고, 다시 시작하면 저장된 유형별 수부터 이어 셉니다.
 - **상태**: 가공 중이면 `RUN`, 만들 것이 없으면(지시 없음 · 앞 공정 양품 대기) `IDLE`. 불량이 나면 `WARN` 또는 `DOWN`(반반)으로 3~5초 바뀌고, `DOWN` 동안은 투입 · 가공이 멈춥니다. 가공 중에는 가끔(가공 300초에 한 번꼴) 30~60초짜리 속도 저하 `WARN`이 생기고, `WARN` 동안은 1초에 0.75초분만 가공합니다(OEE 성능 손실).
+- **긴 정지**: 가공 중 가끔 60~180초짜리 `DOWN`이 생깁니다. 알람 고장(가공 40분에 한 번꼴)은 설비 알람 2개 중 하나를 `alarmCode`로 같이 보내고, 알람 없는 정지(가공 60분에 한 번꼴, 자재 결품 · 작업자 부재처럼 설비가 모르는 이유)는 코드 없이 보냅니다. 알람 목록은 서버 기준정보(`equipment_alarm`)와 같습니다.
 - **3D 표시**: 설비 모델 · 작업자 · 경광등(가동 초록 · 대기 파랑 · 경고 노랑 · 고장 빨강) · 바닥 띠가 상태를 따라 움직이고, 라벨에 온도 · 진동을 보여 줍니다. 위쪽에 생산 중인 작업지시와 진척을 띄웁니다. 출하장은 포장기 양품, 폐기함은 전 설비 불량 합계입니다.
 
 ```json
@@ -160,9 +166,10 @@ Java 17과 PostgreSQL이 필요합니다. Gradle은 래퍼(`gradlew`)를 쓰므�
    ```bash
    cp backend/src/main/resources/application.properties.example backend/src/main/resources/application.properties
    ```
-3. 실행합니다. 서버가 뜰 때 테이블이 없으면 `schema.sql`로 만들고, 기준정보(품목 2종 · 설비 5대 · 불량 유형 10종)를 넣습니다.
+3. 실행합니다. 서버가 뜰 때 테이블이 없으면 `schema.sql`로 만들고, 기준정보(품목 2종 · 설비 5대 · 불량 유형 10종 · 비가동 사유 10종 · 설비 알람 10종)를 넣습니다.
    - OEE(2026-10)의 센서 로그 `work_order_id` 열과 `production_event` 테이블은 서버를 다시 켜면 기존 DB에도 생깁니다(지울 필요 없음). 그 전 로그는 작업지시가 NULL이라 OEE 계획 가동 시간에서 빠집니다.
    - 품질(2026-10)의 `defect_type` · `production_defect` · `defect_event` 테이블도 서버를 다시 켜면 생깁니다. 그 전에 난 불량은 유형이 없어 품질 화면에 "미분류"로 보입니다.
+   - 비가동(2026-10)의 `downtime_reason` · `equipment_alarm` · `downtime` 테이블도 서버를 다시 켜면 생깁니다. 그 전의 정지는 기록이 없어 비가동 파레토에 들어가지 않습니다.
    - 작업지시 추가(2026-10) 전에 만든 DB라면 `production_performance`에 외래 키가 없습니다. 이 테이블을 지우고(`DROP TABLE production_performance;`) 서버를 다시 켜면 외래 키와 함께 다시 만듭니다(옛 실적은 사라짐).
    ```bash
    cd backend
@@ -182,11 +189,13 @@ Java 17과 PostgreSQL이 필요합니다. Gradle은 래퍼(`gradlew`)를 쓰므�
 | `production_event` | 누적 수량이 늘 때마다 늘어난 양품 · 불량을 한 행(전송 시각). 구간 · 시간대별 OEE · 품질 생산 수 |
 | `production_defect` | (작업지시, 설비, 유형)마다 누적 불량 수 한 행. (설비, 유형) 쌍 외래 키로 다른 설비의 유형을 막음 |
 | `defect_event` | 유형별 누적이 늘 때마다 늘어난 수를 한 행. 구간별 불량 유형 파레토 |
+| `downtime_reason` · `equipment_alarm` | 기준정보: 비가동 사유(대분류 · 사유), 설비 알람과 알람마다 자동으로 붙일 사유 |
+| `downtime` | 정지 한 건: 설비의 DOWN 로그가 5초 안으로 이어지는 동안 한 행(시작 · 마지막 시각, 초 = DOWN 로그 수). 알람 · 사유 · 출처(AUTO · MANUAL) · 입력자 · 입력 시각. (설비, 알람) 쌍 외래 키로 다른 설비의 알람을 막음 |
 
 | API | 내용 |
 |---|---|
 | `POST /api/v1/producer/runs` | 시뮬레이터 시작(넘겨받기). `runId`와 진행 중 작업지시(설비별 저장 수량 포함) |
-| `POST /api/v1/sensor-logs/bulk` | 센서 로그 수신(헤더 `X-Producer-Run-Id` 필수). 정상이면 `200 {"sensorLogs":n,"productions":m,"workOrder":{...}\|null}`, 형식 오류 · 설비에 없는 불량 유형 · 유형별 합이 불량 수 초과는 400, 밀려난 실행 · 헤더 없음 409 |
+| `POST /api/v1/sensor-logs/bulk` | 센서 로그 수신(헤더 `X-Producer-Run-Id` 필수). 정상이면 `200 {"sensorLogs":n,"productions":m,"workOrder":{...}\|null}`, 형식 오류 · 설비에 없는 불량 유형 · 유형별 합이 불량 수 초과 · 설비에 없는 알람 · DOWN이 아닌 행의 `alarmCode`는 400, 밀려난 실행 · 헤더 없음 409 |
 | `GET /api/v1/items` · `GET /api/v1/equipment` | 품목 · 설비 기준정보 |
 | `GET /api/v1/work-orders?status=` | 작업지시 목록 + 진척(포장 양품). `status`는 반복해서 여러 개 |
 | `GET /api/v1/work-orders/current` · `/{id}` | 진행 중(없으면 204) · 한 건 상세(설비별 수량 · 유형별 누적 불량), 없는 번호는 404 |
@@ -197,13 +206,17 @@ Java 17과 PostgreSQL이 필요합니다. Gradle은 래퍼(`gradlew`)를 쓰므�
 | `GET /api/v1/work-orders/{id}/oee` | 작업지시 하나의 OEE(그 지시가 진행 중이던 시간만), 없는 번호는 404 |
 | `GET /api/v1/quality?range=today\|1h\|8h` | 구간의 직행률 · 양품률 · 불량 수 · 완성품, 공정별 합격률, 불량 유형 파레토(누적 비율 · 미분류), 작업지시별 불량 |
 | `GET /api/v1/quality/trend?range=` | 시각 칸마다 불량률(전 공정). 생산이 없던 칸은 없음 |
+| `GET /api/v1/downtime-reasons` | 비가동 사유 목록(대분류 · 순서) |
+| `GET /api/v1/downtimes/summary?range=` | 구간의 정지 시간 · 정지 수(60초 이상) · 사유 미입력 · 순간 정지와 사유 파레토(누적 비율) |
+| `GET /api/v1/downtimes?range=&pending=true` | 구간의 60초 이상 · 진행 중 정지 목록(진행 중 먼저 · 최근 순). `pending=true`면 사유 없는 것만 |
+| `PUT /api/v1/downtimes/{id}/reason` | 사유 입력 · 고치기 `{reasonCode, enteredBy}` → 출처 MANUAL. 없는 정지 404, 없는 사유 · 빈 입력자 400 |
 | `GET /api/v1/equipment/latest` | 설비별 최신 로그 1건 |
 | `GET /api/v1/equipment/{id}/sensor-logs?minutes=10` | 설비 하나의 최근 로그(시간순) |
 | `GET /api/v1/equipment/status-summary?minutes=60` | 설비 · 상태별로 머문 초 |
 | `GET /api/v1/equipment/{id}/status-changes?minutes=60` | 설비 하나의 상태 구간(최신 순) |
 | `GET /api/v1/production-performance` | 작업지시 · 설비별 누적 실적 |
 
-조회 API의 `minutes`는 1~1440만 받고, 벗어나거나 숫자가 아니면 400입니다. 설계: [수신 API](docs/plans/backend-sensor-log-api.md) · [조회 API](docs/plans/dashboard-monitoring-api.md) · [작업지시](docs/plans/work-order.md) · [OEE](docs/plans/oee.md) · [품질](docs/plans/quality.md)
+조회 API의 `minutes`는 1~1440만 받고, 벗어나거나 숫자가 아니면 400입니다. 설계: [수신 API](docs/plans/backend-sensor-log-api.md) · [조회 API](docs/plans/dashboard-monitoring-api.md) · [작업지시](docs/plans/work-order.md) · [OEE](docs/plans/oee.md) · [품질](docs/plans/quality.md) · [비가동](docs/plans/downtime.md)
 
 ### 센서 로그 인덱스 비교 실험
 
@@ -224,14 +237,15 @@ Java 17과 PostgreSQL이 필요합니다. Gradle은 래퍼(`gradlew`)를 쓰므�
 자동 시뮬레이션: 시작(POST /producer/runs) ──> 1초마다 라인 진행 (producer/) ──┬─> POST /sensor-logs/bulk (+ 실행 ID) ──> backend/
                                                                               └─> 3D 화면 (provide/inject)
 
-backend/: SensorLogController ──> ProducerService(실행 ID 확인, 라인 잠금) ──> SensorLogService(metrics · production 분리, 생산 · 불량 이벤트 · 저장)
+backend/: SensorLogController ──> ProducerService(실행 ID 확인, 라인 잠금) ──> SensorLogService(metrics · production 분리, 생산 · 불량 이벤트 · 정지 이어 붙이기 · 저장)
                                                                          └─> WorkOrderService.advanceLine(완료 판정 → 다음 지시 선택)
           WorkOrderController ──> WorkOrderService(등록 · 상태 전환, 라인 잠금) ──> WorkOrderMapper
           OeeController ──> OeeService(구간 · 비율 계산) ──> OeeMapper(초 · 개수 합계 SQL)
           QualityController ──> QualityService(직행률 · 파레토 계산) ──> QualityMapper(유형 · 작업지시별 합계) · OeeMapper(설비별 개수)
+          DowntimeController ──> DowntimeService(파레토 계산 · 사유 입력) ──> DowntimeQueryMapper(겹친 초 합계 · 목록)
           QueryController ──> QueryService(기간 검사) ──> SensorLogQueryMapper · ProductionQueryMapper ──> 조회 SQL
 
-대시보드: usePolling(2초) ──> api/dashboard.ts · api/workOrders.ts · api/oee.ts · api/quality.ts (axios) ──> 조회 · 작업지시 API
+대시보드: usePolling(2초) ──> api/dashboard.ts · api/workOrders.ts · api/oee.ts · api/quality.ts · api/downtime.ts (axios) ──> 조회 · 작업지시 API
           views/ ──> dashboard/ (계산 함수 · 카드 · 차트)
 ```
 
@@ -250,7 +264,7 @@ frontend/src/
 ├── api/          # 조회 · 작업지시 · 시뮬레이터 API 호출 함수 · 응답 타입 (axios)
 ├── composables/  # usePolling(2초 폴링), useNow(1초 시계), useDisclosure(드롭다운 여닫기)
 ├── charts/       # ECharts 등록(선 · 막대), 차트 색
-├── dashboard/    # 대시보드 계산 함수와 컴포넌트(상태 카드, 추이 · 실적 차트, 상태 비율, 작업지시 진척 · 등록 폼, OEE 표 · 추이 · 구간 선택, 불량 파레토 · 불량률 추이, 연결 안내)
+├── dashboard/    # 대시보드 계산 함수와 컴포넌트(상태 카드, 추이 · 실적 차트, 상태 비율, 작업지시 진척 · 등록 폼, OEE 표 · 추이 · 구간 선택, 파레토 막대(불량 유형 · 비가동 사유 공통) · 불량률 추이, 정지 목록 · 사유 입력, 연결 안내)
 ├── producer/     # 자동 시뮬레이션: 설비 정의, 더미 센서 데이터 생성, 라인 공정 연결, 시작 · 1초 전송(axios), seed 난수
 └── scene/        # 3D 장면(TresJS): 라인 배치, 설비 모델, 사람, 컨베이어, 자재 랙
 ```
@@ -258,13 +272,13 @@ frontend/src/
 ```
 backend/src/main/
 ├── java/com/messtudy/backend/
-│   ├── controller/   # 수신(SensorLogController, ProducerController) · 작업지시(WorkOrderController) · OEE · 품질 · 기준정보 · 조회
-│   ├── service/      # 수신: 실행 ID · 분리 · 검증 · 트랜잭션 / 작업지시: 등록 · 상태 전환 · 다음 지시 선택 / OEE · 품질: 비율 계산 / 조회: 기간 검사
+│   ├── controller/   # 수신(SensorLogController, ProducerController) · 작업지시(WorkOrderController) · OEE · 품질 · 비가동 · 기준정보 · 조회
+│   ├── service/      # 수신: 실행 ID · 분리 · 검증 · 트랜잭션 / 작업지시: 등록 · 상태 전환 · 다음 지시 선택 / OEE · 품질 · 비가동: 비율 계산 · 사유 입력 / 조회: 기간 검사
 │   ├── mapper/       # MyBatis 매퍼: 다중 INSERT, UPSERT, 조건부 상태 전환 UPDATE, 조회 SQL(LATERAL, LAG 윈도 함수)
-│   └── config/       # CORS(GET · POST), 400 · 404 · 409 오류 응답
+│   └── config/       # CORS(GET · POST · PUT), 400 · 404 · 409 오류 응답
 └── resources/
     ├── application.properties.example  # 복사해서 application.properties로 씀(실제 파일은 커밋 안 함)
-    ├── schema.sql    # 기준정보(불량 유형 포함) · 작업지시 · 시뮬레이터 실행 · 수신 테이블, 인덱스, 기준정보 시드
+    ├── schema.sql    # 기준정보(불량 유형 · 비가동 사유 · 설비 알람 포함) · 작업지시 · 시뮬레이터 실행 · 수신 테이블, 인덱스, 기준정보 시드
     └── mapper/       # 매퍼 SQL(XML)
 
 backend/sql/bench/    # 인덱스 비교 실험 SQL · 실행 스크립트(서버는 실행하지 않음)

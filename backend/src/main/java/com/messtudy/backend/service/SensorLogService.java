@@ -1,6 +1,8 @@
 package com.messtudy.backend.service;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -8,10 +10,12 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.messtudy.backend.mapper.DowntimeMapper;
 import com.messtudy.backend.mapper.ProductionPerformanceMapper;
 import com.messtudy.backend.mapper.SensorLogMapper;
 
@@ -19,6 +23,7 @@ import com.messtudy.backend.mapper.SensorLogMapper;
  * 설비 데이터 한 묶음을 받아 센서 로그(metrics · status)와 생산 실적(production)으로 나눠 저장한다.
  * 실적이 늘었으면 늘어난 만큼 생산 이벤트도 남긴다(OEE 구간 생산 수).
  * 유형별 불량 누적(production.defects)도 같은 방식으로 저장하고 늘어난 만큼 불량 이벤트를 남긴다(품질 파레토).
+ * 고장(DOWN) 행은 설비마다 이어 붙여 정지(downtime) 한 건으로 만든다(비가동 사유, docs/plans/downtime.md 5장).
  * 모두 한 트랜잭션이라, 하나가 실패하면 아무것도 저장되지 않는다.
  */
 @Service
@@ -26,20 +31,31 @@ public class SensorLogService {
 
     private final SensorLogMapper sensorLogMapper;
     private final ProductionPerformanceMapper productionPerformanceMapper;
+    private final DowntimeMapper downtimeMapper;
 
-    public SensorLogService(SensorLogMapper sensorLogMapper, ProductionPerformanceMapper productionPerformanceMapper) {
+    /** 마지막으로 본 시각에서 이만큼 안에 다음 DOWN 행이 오면 같은 정지로 이어 붙인다(요청이 한두 개 빠져도 끊기지 않게) */
+    static final Duration DOWNTIME_GAP = Duration.ofSeconds(5);
+
+    /** 정지를 어떻게 처리할지: 이어 붙이기 · 새 정지 · 건너뛰기(같은 요청이 다시 왔거나 늦게 온 옛 요청) */
+    enum DowntimeAction { EXTEND, START, SKIP }
+
+    public SensorLogService(SensorLogMapper sensorLogMapper, ProductionPerformanceMapper productionPerformanceMapper,
+            DowntimeMapper downtimeMapper) {
         this.sensorLogMapper = sensorLogMapper;
         this.productionPerformanceMapper = productionPerformanceMapper;
+        this.downtimeMapper = downtimeMapper;
     }
 
     /**
      * @param payload 설비별 데이터 목록(equipmentId, timestamp, status, workOrderId, metrics, production).
      *                진행 중 작업지시가 없을 때는 workOrderId · production을 둘 다 뺀다.
-     *                production.defects({유형 코드: 누적 수})는 없어도 된다(빈 것으로 본다)
+     *                production.defects({유형 코드: 누적 수})는 없어도 된다(빈 것으로 본다).
+     *                alarmCode는 status가 DOWN일 때만 올 수 있다(알람 고장)
      * @return 저장한 건수 {"sensorLogs": 넣은 센서 로그 수, "productions": 추가 · 갱신한 실적 수}.
      *         생산 · 불량 이벤트와 유형별 불량 수는 세지 않는다(실적 저장의 부산물)
-     * @throws InvalidPayloadException 필수 값이 없거나 형식이 틀렸을 때, 유형별 불량 합이 badCount를 넘을 때(아무것도 저장하지 않는다).
-     *         설비에 없는 유형 코드는 외래 키 위반(DataIntegrityViolationException)으로 전체가 롤백된다
+     * @throws InvalidPayloadException 필수 값이 없거나 형식이 틀렸을 때, 유형별 불량 합이 badCount를 넘을 때,
+     *         DOWN이 아닌 행에 alarmCode가 있을 때(아무것도 저장하지 않는다).
+     *         설비에 없는 유형 코드 · 알람 코드는 외래 키 위반(DataIntegrityViolationException)으로 전체가 롤백된다
      */
     @Transactional
     public Map<String, Integer> save(List<Map<String, Object>> payload) {
@@ -52,6 +68,7 @@ public class SensorLogService {
         Map<String, Map<String, Object>> productions = new LinkedHashMap<>();
         // 유형별 불량도 실적과 같은 키로 마지막 값만 남긴다
         Map<String, List<Map<String, Object>>> defects = new LinkedHashMap<>();
+        List<Map<String, Object>> downs = new ArrayList<>();
 
         for (int i = 0; i < payload.size(); i++) {
             Map<String, Object> item = payload.get(i);
@@ -59,7 +76,14 @@ public class SensorLogService {
                 throw new InvalidPayloadException("[" + i + "] 항목이 비어 있습니다");
             }
             String where = "[" + i + "]";
-            sensorLogs.add(toSensorLog(item, where));
+            Map<String, Object> log = toSensorLog(item, where);
+            sensorLogs.add(log);
+            String alarmCode = toAlarmCode(item, log, where);
+            if ("DOWN".equals(log.get("status"))) {
+                Map<String, Object> down = new HashMap<>(log);
+                down.put("alarmCode", alarmCode);
+                downs.add(down);
+            }
             // 진행 중 작업지시가 없으면(설비 대기) workOrderId · production 없이 센서 로그만 온다
             if (item.get("workOrderId") == null && item.get("production") == null) {
                 continue;
@@ -84,7 +108,51 @@ public class SensorLogService {
             productionPerformanceMapper.insertDefectEvents(defectRows);
             productionPerformanceMapper.upsertDefects(defectRows);
         }
+        trackDowntime(downs);
         return result(savedLogs, savedProductions);
+    }
+
+    /** DOWN 행을 시각 순서로 설비의 마지막 정지에 이어 붙이거나 새 정지로 넣는다. 라인 잠금 안이라 동시에 같은 정지를 만들지 않는다 */
+    private void trackDowntime(List<Map<String, Object>> downs) {
+        downs.sort((a, b) -> ((OffsetDateTime) a.get("recordedAt")).compareTo((OffsetDateTime) b.get("recordedAt")));
+        for (Map<String, Object> down : downs) {
+            Map<String, Object> latest = downtimeMapper.findLatest((String) down.get("equipmentId"));
+            OffsetDateTime recordedAt = (OffsetDateTime) down.get("recordedAt");
+            String alarmCode = (String) down.get("alarmCode");
+            switch (downtimeAction(latest, recordedAt.toInstant(), alarmCode)) {
+                case EXTEND -> downtimeMapper.extend(((Number) latest.get("id")).longValue(), recordedAt);
+                case START -> downtimeMapper.insert(down);
+                case SKIP -> { }
+            }
+        }
+    }
+
+    /**
+     * @param latest 설비의 마지막 정지(lastSeenAt, alarmCode). 없으면 null
+     * @return 마지막으로 본 시각 이하면 SKIP, 5초 안이고 알람이 같으면 EXTEND, 아니면 START
+     */
+    static DowntimeAction downtimeAction(Map<String, Object> latest, Instant recordedAt, String alarmCode) {
+        if (latest == null) {
+            return DowntimeAction.START;
+        }
+        Instant lastSeen = OeeService.toInstant(latest.get("lastSeenAt"));
+        if (!recordedAt.isAfter(lastSeen)) {
+            return DowntimeAction.SKIP;
+        }
+        boolean near = !recordedAt.isAfter(lastSeen.plus(DOWNTIME_GAP));
+        return near && Objects.equals(alarmCode, latest.get("alarmCode")) ? DowntimeAction.EXTEND : DowntimeAction.START;
+    }
+
+    /** alarmCode는 없어도 되고, 있으면 문자열이며 DOWN 행에만 올 수 있다 */
+    private static String toAlarmCode(Map<String, Object> item, Map<String, Object> log, String where) {
+        if (item.get("alarmCode") == null) {
+            return null;
+        }
+        String code = requireText(item, "alarmCode", where);
+        if (!"DOWN".equals(log.get("status"))) {
+            throw new InvalidPayloadException(where + ".alarmCode: 고장(DOWN)일 때만 보낼 수 있습니다(status " + log.get("status") + ")");
+        }
+        return code;
     }
 
     private Map<String, Object> toSensorLog(Map<String, Object> item, String where) {

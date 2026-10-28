@@ -1,7 +1,7 @@
 import type { DefectCount } from '@/api/quality'
+import { markVitalFew } from './pareto'
 
-/** 파레토에서 "먼저 손볼 유형"으로 굵게 보이는 누적 비율 기준 */
-export const VITAL_FEW_RATIO = 0.8
+export { VITAL_FEW_RATIO } from './pareto'
 
 /** 파레토 막대 한 줄 */
 export interface ParetoBar extends DefectCount {
@@ -14,13 +14,6 @@ export interface ParetoBar extends DefectCount {
 
 /** 서버 파레토(많은 순 · 미분류 맨 뒤)에 막대 길이와 강조 여부를 붙인다 */
 export function toParetoBars(defects: readonly DefectCount[]): ParetoBar[] {
-  const max = Math.max(0, ...defects.map((d) => d.count))
-  let before = 0
-  return defects.map((d) => {
-    const unclassified = d.defectCode === null
-    // 이 줄 앞까지의 누적이 80% 미만이면 이 줄이 80%를 채우는 데 든다
-    const vital = !unclassified && before < VITAL_FEW_RATIO
-    before = d.cumulativeRatio ?? before
-    return { ...d, share: max > 0 ? d.count / max : 0, vital, unclassified }
-  })
+  return markVitalFew(defects, (d) => d.count, (d) => d.cumulativeRatio, (d) => d.defectCode === null)
+    .map(({ item, share, vital }) => ({ ...item, share, vital, unclassified: item.defectCode === null }))
 }

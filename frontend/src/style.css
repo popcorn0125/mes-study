@@ -1212,3 +1212,90 @@ body,
 .pareto__row--unclassified .pareto__track > span {
   background: #6e7681;
 }
+
+/* ── 비가동 ─────────────────────────────────────────────── */
+.dash-kpi--attention {
+  border-color: #d29922;
+}
+.downtime-body {
+  margin-top: 16px;
+}
+.downtime-body h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+.downtime-body h3 span {
+  font-size: 12px;
+  font-weight: 400;
+  color: #8b949e;
+}
+.downtime-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 400;
+  color: #c9d1d9;
+  cursor: pointer;
+}
+.downtime-list {
+  max-height: 420px;
+  overflow: auto;
+}
+.downtime-reason {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.downtime-reason select {
+  min-width: 140px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 13px;
+  color: #e6edf3;
+  background: #161b22;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+}
+.downtime-reason select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.downtime-source,
+.downtime-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #8b949e;
+}
+.downtime-source--pending {
+  font-weight: 600;
+  color: #d29922;
+}
+.downtime-error {
+  color: #f85149;
+}
+.downtime-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  border-radius: 999px;
+}
+.downtime-chip--live {
+  color: #fff;
+  background: #da3633;
+}
+.pareto__row--pending .pareto__track > span {
+  background: transparent;
+  border: 1px solid #d29922;
+  box-sizing: border-box;
+}
+.pareto__row--pending .pareto__name {
+  color: #d29922;
+}

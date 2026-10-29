@@ -31,9 +31,12 @@ class WorkOrderServiceDbTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private SensorAggregator aggregator;
+
     @BeforeEach
     void clean() {
-        TestDb.reset(jdbc);
+        TestDb.reset(jdbc, aggregator);
     }
 
     private static Map<String, Object> body(int plannedQty, Integer priority) {

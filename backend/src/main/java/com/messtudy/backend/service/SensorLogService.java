@@ -4,8 +4,10 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,21 +19,26 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.messtudy.backend.mapper.DowntimeMapper;
 import com.messtudy.backend.mapper.ProductionPerformanceMapper;
-import com.messtudy.backend.mapper.SensorLogMapper;
+import com.messtudy.backend.mapper.StatusChangeMapper;
 
 /**
- * 설비 데이터 한 묶음을 받아 센서 로그(metrics · status)와 생산 실적(production)으로 나눠 저장한다.
+ * 설비 데이터 한 묶음을 받아 센서 값(metrics · status)과 생산 실적(production)으로 나눠 저장한다.
+ * 센서 원본은 DB에 넣지 않는다: 메모리 1분 요약(SensorAggregator) · 스풀 파일(SensorArchive)에 넣고,
+ * 상태가 바뀔 때만 상태 이력 1행을 넣는다(docs/plans/sensor-rollup.md). 같은 설비의 마지막 시각 이하인 행(재전송)은 버린다.
  * 실적이 늘었으면 늘어난 만큼 생산 이벤트도 남긴다(OEE 구간 생산 수).
  * 유형별 불량 누적(production.defects)도 같은 방식으로 저장하고 늘어난 만큼 불량 이벤트를 남긴다(품질 파레토).
  * 고장(DOWN) 행은 설비마다 이어 붙여 정지(downtime) 한 건으로 만든다(비가동 사유, docs/plans/downtime.md 5장).
- * 모두 한 트랜잭션이라, 하나가 실패하면 아무것도 저장되지 않는다.
+ * 모두 한 트랜잭션이라, 하나가 실패하면 아무것도 저장되지 않는다(메모리 · 스풀은 DB 쓰기가 모두 끝난 뒤에 넣는다).
+ * 같은 설비는 설비별 잠금으로 한 번에 한 요청만 처리한다(정지 · 상태 이력 · 메모리 상태가 섞이지 않게).
  */
 @Service
 public class SensorLogService {
 
-    private final SensorLogMapper sensorLogMapper;
     private final ProductionPerformanceMapper productionPerformanceMapper;
     private final DowntimeMapper downtimeMapper;
+    private final StatusChangeMapper statusChangeMapper;
+    private final SensorAggregator aggregator;
+    private final SensorArchive archive;
 
     /** 마지막으로 본 시각에서 이만큼 안에 다음 DOWN 행이 오면 같은 정지로 이어 붙인다(요청이 한두 개 빠져도 끊기지 않게) */
     static final Duration DOWNTIME_GAP = Duration.ofSeconds(5);
@@ -39,11 +46,13 @@ public class SensorLogService {
     /** 정지를 어떻게 처리할지: 이어 붙이기 · 새 정지 · 건너뛰기(같은 요청이 다시 왔거나 늦게 온 옛 요청) */
     enum DowntimeAction { EXTEND, START, SKIP }
 
-    public SensorLogService(SensorLogMapper sensorLogMapper, ProductionPerformanceMapper productionPerformanceMapper,
-            DowntimeMapper downtimeMapper) {
-        this.sensorLogMapper = sensorLogMapper;
+    public SensorLogService(ProductionPerformanceMapper productionPerformanceMapper, DowntimeMapper downtimeMapper,
+            StatusChangeMapper statusChangeMapper, SensorAggregator aggregator, SensorArchive archive) {
         this.productionPerformanceMapper = productionPerformanceMapper;
         this.downtimeMapper = downtimeMapper;
+        this.statusChangeMapper = statusChangeMapper;
+        this.aggregator = aggregator;
+        this.archive = archive;
     }
 
     /**
@@ -51,7 +60,7 @@ public class SensorLogService {
      *                진행 중 작업지시가 없을 때는 workOrderId · production을 둘 다 뺀다.
      *                production.defects({유형 코드: 누적 수})는 없어도 된다(빈 것으로 본다).
      *                alarmCode는 status가 DOWN일 때만 올 수 있다(알람 고장)
-     * @return 저장한 건수 {"sensorLogs": 넣은 센서 로그 수, "productions": 추가 · 갱신한 실적 수}.
+     * @return 저장한 건수 {"sensorLogs": 받은 센서 값 수(재전송으로 버린 행 제외), "productions": 추가 · 갱신한 실적 수}.
      *         생산 · 불량 이벤트와 유형별 불량 수는 세지 않는다(실적 저장의 부산물)
      * @throws InvalidPayloadException 필수 값이 없거나 형식이 틀렸을 때, 유형별 불량 합이 badCount를 넘을 때,
      *         DOWN이 아닌 행에 alarmCode가 있을 때(아무것도 저장하지 않는다).
@@ -63,7 +72,7 @@ public class SensorLogService {
             return result(0, 0);
         }
 
-        List<Map<String, Object>> sensorLogs = new ArrayList<>();
+        List<SensorReading> sensorLogs = new ArrayList<>();
         // 같은 (작업지시, 장비)가 한 요청에 두 번 있으면 UPSERT가 오류를 내므로 마지막 값만 남긴다
         Map<String, Map<String, Object>> productions = new LinkedHashMap<>();
         // 유형별 불량도 실적과 같은 키로 마지막 값만 남긴다
@@ -77,8 +86,8 @@ public class SensorLogService {
             }
             String where = "[" + i + "]";
             Map<String, Object> log = toSensorLog(item, where);
-            sensorLogs.add(log);
             String alarmCode = toAlarmCode(item, log, where);
+            sensorLogs.add(toReading(log, alarmCode));
             if ("DOWN".equals(log.get("status"))) {
                 Map<String, Object> down = new HashMap<>(log);
                 down.put("alarmCode", alarmCode);
@@ -94,7 +103,8 @@ public class SensorLogService {
             defects.put(key, toDefects(item, production, where));
         }
 
-        int savedLogs = sensorLogMapper.insertAll(sensorLogs);
+        // 설비 이름 순서로 잡아 요청끼리 교착하지 않는다. 트랜잭션이 끝날 때 풀린다
+        sensorLogs.stream().map(SensorReading::equipmentId).distinct().sorted().forEach(statusChangeMapper::lockEquipment);
         int savedProductions = 0;
         if (!productions.isEmpty()) {
             List<Map<String, Object>> rows = new ArrayList<>(productions.values());
@@ -109,10 +119,50 @@ public class SensorLogService {
             productionPerformanceMapper.upsertDefects(defectRows);
         }
         trackDowntime(downs);
-        return result(savedLogs, savedProductions);
+        List<SensorReading> accepted = acceptNew(sensorLogs);
+        trackStatus(accepted);
+        // DB 쓰기가 다 끝난 뒤(설비별 잠금을 잡은 채) 스풀 → 메모리 순서로 넣는다. 스풀 쓰기가 실패하면 전체가 롤백되고 메모리는 그대로다
+        archive.append(accepted);
+        aggregator.accept(accepted);
+        return result(accepted.size(), savedProductions);
     }
 
-    /** DOWN 행을 시각 순서로 설비의 마지막 정지에 이어 붙이거나 새 정지로 넣는다. 라인 잠금 안이라 동시에 같은 정지를 만들지 않는다 */
+    /** 설비마다 시각 순서로 정렬하고, 마지막으로 받은 시각(메모리) 이하인 행 · 같은 요청 안의 같은 시각을 버린다 */
+    private List<SensorReading> acceptNew(List<SensorReading> readings) {
+        List<SensorReading> sorted = new ArrayList<>(readings);
+        sorted.sort(Comparator.comparing(SensorReading::equipmentId).thenComparing(SensorReading::recordedAt));
+        List<SensorReading> accepted = new ArrayList<>();
+        Map<String, Instant> lastSeen = new HashMap<>();
+        for (SensorReading r : sorted) {
+            Instant last = lastSeen.computeIfAbsent(r.equipmentId(), id -> {
+                SensorAggregator.Tracker tracker = aggregator.tracker(id);
+                return tracker == null ? null : tracker.lastSeen();
+            });
+            if (last == null || r.recordedAt().isAfter(last)) {
+                accepted.add(r);
+                lastSeen.put(r.equipmentId(), r.recordedAt());
+            }
+        }
+        return accepted;
+    }
+
+    /** 상태가 바뀌었거나 5초 넘게 끊겼다가 온 행마다 지금 구간을 끝내고 새 구간을 연다 */
+    private void trackStatus(List<SensorReading> accepted) {
+        Map<String, SensorAggregator.Tracker> trackers = new HashMap<>();
+        for (SensorReading r : accepted) {
+            SensorAggregator.Tracker tracker = trackers.containsKey(r.equipmentId())
+                    ? trackers.get(r.equipmentId()) : aggregator.tracker(r.equipmentId());
+            if (SensorAggregator.Tracker.startsSegment(tracker, r)) {
+                // 처음 받는 설비면 남아 있을지 모르는 진행 중 행(서버가 죽기 전 것)을 이 행 시각으로 끝낸다
+                Instant end = tracker == null ? r.recordedAt() : SensorAggregator.Tracker.endOf(tracker, r);
+                statusChangeMapper.close(r.equipmentId(), OffsetDateTime.ofInstant(end, ZoneOffset.UTC));
+                statusChangeMapper.open(r.equipmentId(), r.status(), OffsetDateTime.ofInstant(r.recordedAt(), ZoneOffset.UTC));
+            }
+            trackers.put(r.equipmentId(), SensorAggregator.Tracker.next(tracker, r));
+        }
+    }
+
+    /** DOWN 행을 시각 순서로 설비의 마지막 정지에 이어 붙이거나 새 정지로 넣는다. 설비별 잠금 안이라 동시에 같은 정지를 만들지 않는다 */
     private void trackDowntime(List<Map<String, Object>> downs) {
         downs.sort((a, b) -> ((OffsetDateTime) a.get("recordedAt")).compareTo((OffsetDateTime) b.get("recordedAt")));
         for (Map<String, Object> down : downs) {
@@ -167,6 +217,12 @@ public class SensorLogService {
         log.put("temperature", optionalDecimal(metrics, "temperature", where + ".metrics"));
         log.put("vibration", optionalDecimal(metrics, "vibration", where + ".metrics"));
         return log;
+    }
+
+    private static SensorReading toReading(Map<String, Object> log, String alarmCode) {
+        return new SensorReading((String) log.get("equipmentId"), ((OffsetDateTime) log.get("recordedAt")).toInstant(),
+                (String) log.get("status"), (String) log.get("workOrderId"), (BigDecimal) log.get("temperature"),
+                (BigDecimal) log.get("vibration"), alarmCode);
     }
 
     private Map<String, Object> toProduction(Map<String, Object> item, String where) {

@@ -127,7 +127,9 @@ CREATE TABLE IF NOT EXISTS producer_run (
 
 -- ── 수신 데이터 ───────────────────────────────────────────
 
--- 장비 센서 시계열 로그: 1초마다 계속 쌓인다. status: RUN 가동 · WARN 경고 · DOWN 고장 · IDLE 대기
+-- 장비 센서 시계열 로그(1초 원본). status: RUN 가동 · WARN 경고 · DOWN 고장 · IDLE 대기
+-- 2026-10-29부터 새로 넣지 않는다. 1초 원본은 Parquet 파일로, DB에는 1분 요약(equipment_sensor_minute)만 넣는다(docs/plans/sensor-rollup.md).
+-- 그 전에 쌓인 행은 아래 1분 요약 · 상태 변경을 처음 채울 때 쓰고 지우지 않는다
 CREATE TABLE IF NOT EXISTS equipment_sensor_log (
     id           BIGSERIAL PRIMARY KEY,
     equipment_id VARCHAR(50) NOT NULL,
@@ -220,3 +222,85 @@ CREATE INDEX IF NOT EXISTS downtime_last_seen_at_idx ON downtime (last_seen_at);
 -- 설비 5대 기준 실험에서 recorded_at 단일이 조회 4개를 모두 5ms 안에 끝냈고, 복합 인덱스보다 3배 작았다
 -- (복합은 설비 조건이 없는 상태 비율 조회에 쓰이지 않는다). 근거: docs/experiments/sensor-log-index/README.md
 CREATE INDEX IF NOT EXISTS equipment_sensor_log_recorded_at_idx ON equipment_sensor_log (recorded_at DESC);
+
+-- ── 1분 요약 · 상태 변경 (docs/plans/sensor-rollup.md) ─────────────────
+
+-- 설비 · 1분 · 작업지시마다 1행. 서버 메모리에서 모았다가 분이 끝나면 넣고, 늦게 온 행은 같은 키로 합친다.
+-- 평균은 합 ÷ 개수로 계산해 둔다(늦게 온 행을 합쳐도 정확하다). 상태별 초는 받은 행 수(1행 = 1초)라 OEE가 원본을 세던 값과 같다.
+-- work_order_id는 작업지시가 없으면(설비 대기) ''다(기본 키에 NULL을 둘 수 없다)
+CREATE TABLE IF NOT EXISTS equipment_sensor_minute (
+    equipment_id      VARCHAR(50) NOT NULL,
+    bucket_start      TIMESTAMPTZ NOT NULL,
+    work_order_id     VARCHAR(50) NOT NULL DEFAULT '',
+    sample_count      INT NOT NULL CHECK (sample_count > 0),
+    temperature_sum   NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    temperature_count INT NOT NULL DEFAULT 0,
+    temperature_avg   NUMERIC(5, 2) GENERATED ALWAYS AS (round(temperature_sum / NULLIF(temperature_count, 0), 2)) STORED,
+    temperature_min   NUMERIC(5, 2),
+    temperature_max   NUMERIC(5, 2),
+    vibration_sum     NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    vibration_count   INT NOT NULL DEFAULT 0,
+    vibration_avg     NUMERIC(5, 2) GENERATED ALWAYS AS (round(vibration_sum / NULLIF(vibration_count, 0), 2)) STORED,
+    vibration_min     NUMERIC(5, 2),
+    vibration_max     NUMERIC(5, 2),
+    run_sec           INT NOT NULL DEFAULT 0,
+    warn_sec          INT NOT NULL DEFAULT 0,
+    down_sec          INT NOT NULL DEFAULT 0,
+    idle_sec          INT NOT NULL DEFAULT 0,
+    last_status       VARCHAR(20) NOT NULL,
+    last_recorded_at  TIMESTAMPTZ NOT NULL,
+    last_temperature  NUMERIC(5, 2),
+    last_vibration    NUMERIC(5, 2),
+    PRIMARY KEY (equipment_id, bucket_start, work_order_id)
+);
+-- 구간 조회(OEE · 상태 비율): 설비 조건 없이 시간 범위만 읽는다
+CREATE INDEX IF NOT EXISTS equipment_sensor_minute_bucket_idx ON equipment_sensor_minute (bucket_start);
+
+-- 설비 상태 이력: 상태가 바뀌는 순간 이전 행의 ended_at을 채우고 새 행을 넣는다. 진행 중인 행은 ended_at이 NULL(설비마다 하나).
+-- 수신이 5초 넘게 끊기면 마지막으로 받은 시각 + 1초로 끝낸다
+CREATE TABLE IF NOT EXISTS equipment_status_change (
+    id           BIGSERIAL PRIMARY KEY,
+    equipment_id VARCHAR(50) NOT NULL,
+    status       VARCHAR(20) NOT NULL,
+    started_at   TIMESTAMPTZ NOT NULL,
+    ended_at     TIMESTAMPTZ CHECK (ended_at > started_at)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS equipment_status_change_open_idx ON equipment_status_change (equipment_id) WHERE ended_at IS NULL;
+-- 최근 n분 이력: 구간 시작 뒤에 끝났거나 아직 진행 중인 행
+CREATE INDEX IF NOT EXISTS equipment_status_change_end_idx
+    ON equipment_status_change (equipment_id, (COALESCE(ended_at, 'infinity'::timestamptz)));
+
+-- 처음 한 번: 요약이 비어 있고 기존 원본이 있으면 원본으로 채운다(개발 DB의 지난 OEE가 그대로 보이게)
+INSERT INTO equipment_sensor_minute (
+    equipment_id, bucket_start, work_order_id, sample_count,
+    temperature_sum, temperature_count, temperature_min, temperature_max,
+    vibration_sum, vibration_count, vibration_min, vibration_max,
+    run_sec, warn_sec, down_sec, idle_sec, last_status, last_recorded_at, last_temperature, last_vibration)
+SELECT
+    equipment_id, date_trunc('minute', recorded_at), COALESCE(work_order_id, ''), count(*),
+    COALESCE(sum(temperature), 0), count(temperature), min(temperature), max(temperature),
+    COALESCE(sum(vibration), 0), count(vibration), min(vibration), max(vibration),
+    count(*) FILTER (WHERE status = 'RUN'), count(*) FILTER (WHERE status = 'WARN'),
+    count(*) FILTER (WHERE status = 'DOWN'), count(*) FILTER (WHERE status = 'IDLE'),
+    (array_agg(status ORDER BY recorded_at DESC))[1], max(recorded_at),
+    (array_agg(temperature ORDER BY recorded_at DESC))[1], (array_agg(vibration ORDER BY recorded_at DESC))[1]
+FROM equipment_sensor_log
+WHERE NOT EXISTS (SELECT 1 FROM equipment_sensor_minute)
+GROUP BY 1, 2, 3;
+
+-- 처음 한 번: 상태 이력도 원본으로 채운다. 앞 로그와 상태가 다르거나 5초 넘게 비면 새 구간이고, 끝은 구간 마지막 로그 + 1초다
+INSERT INTO equipment_status_change (equipment_id, status, started_at, ended_at)
+SELECT equipment_id, status, min(recorded_at), max(recorded_at) + INTERVAL '1 second'
+FROM (
+    SELECT equipment_id, status, recorded_at,
+           sum(is_start) OVER (PARTITION BY equipment_id ORDER BY recorded_at) AS segment
+    FROM (
+        SELECT equipment_id, status, recorded_at,
+               CASE WHEN LAG(status) OVER w IS DISTINCT FROM status
+                      OR recorded_at - LAG(recorded_at) OVER w > INTERVAL '5 seconds' THEN 1 ELSE 0 END AS is_start
+        FROM equipment_sensor_log
+        WHERE NOT EXISTS (SELECT 1 FROM equipment_status_change)
+        WINDOW w AS (PARTITION BY equipment_id ORDER BY recorded_at)
+    ) marked
+) grouped
+GROUP BY equipment_id, segment, status;

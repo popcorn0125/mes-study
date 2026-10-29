@@ -4,3 +4,7 @@ dist
 .DS_Store
 *.tsbuildinfo
 coverage
+
+# 센서 원본 스풀 · Parquet 아카이브(서버를 띄운 폴더 기준)
+/data/
+backend/data/

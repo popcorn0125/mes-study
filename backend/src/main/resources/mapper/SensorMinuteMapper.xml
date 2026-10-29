@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.messtudy.backend.mapper.SensorMinuteMapper">
+
+    <!-- 별칭을 큰따옴표로 감싸야 PostgreSQL이 소문자로 바꾸지 않아 Map 키가 camelCase로 나온다 -->
+
+    <sql id="insertRows">
+        INSERT INTO equipment_sensor_minute AS t (
+            equipment_id, bucket_start, work_order_id, sample_count,
+            temperature_sum, temperature_count, temperature_min, temperature_max,
+            vibration_sum, vibration_count, vibration_min, vibration_max,
+            run_sec, warn_sec, down_sec, idle_sec,
+            last_status, last_recorded_at, last_temperature, last_vibration)
+        VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (
+                #{r.equipmentId}, #{r.bucketStart}, #{r.workOrderId}, #{r.sampleCount},
+                #{r.temperatureSum}, #{r.temperatureCount},
+                #{r.temperatureMin, jdbcType=NUMERIC}, #{r.temperatureMax, jdbcType=NUMERIC},
+                #{r.vibrationSum}, #{r.vibrationCount},
+                #{r.vibrationMin, jdbcType=NUMERIC}, #{r.vibrationMax, jdbcType=NUMERIC},
+                #{r.runSec}, #{r.warnSec}, #{r.downSec}, #{r.idleSec},
+                #{r.lastStatus}, #{r.lastRecordedAt},
+                #{r.lastTemperature, jdbcType=NUMERIC}, #{r.lastVibration, jdbcType=NUMERIC}
+            )
+        </foreach>
+        ON CONFLICT (equipment_id, bucket_start, work_order_id) DO UPDATE SET
+    </sql>
+
+    <!-- LEAST · GREATEST는 NULL을 건너뛴다(한쪽에 온도가 없어도 다른 쪽 값이 남는다) -->
+    <insert id="merge">
+        <include refid="insertRows"/>
+            sample_count      = t.sample_count + EXCLUDED.sample_count,
+            temperature_sum   = t.temperature_sum + EXCLUDED.temperature_sum,
+            temperature_count = t.temperature_count + EXCLUDED.temperature_count,
+            temperature_min   = LEAST(t.temperature_min, EXCLUDED.temperature_min),
+            temperature_max   = GREATEST(t.temperature_max, EXCLUDED.temperature_max),
+            vibration_sum     = t.vibration_sum + EXCLUDED.vibration_sum,
+            vibration_count   = t.vibration_count + EXCLUDED.vibration_count,
+            vibration_min     = LEAST(t.vibration_min, EXCLUDED.vibration_min),
+            vibration_max     = GREATEST(t.vibration_max, EXCLUDED.vibration_max),
+            run_sec           = t.run_sec + EXCLUDED.run_sec,
+            warn_sec          = t.warn_sec + EXCLUDED.warn_sec,
+            down_sec          = t.down_sec + EXCLUDED.down_sec,
+            idle_sec          = t.idle_sec + EXCLUDED.idle_sec,
+            last_status       = CASE WHEN EXCLUDED.last_recorded_at &gt;= t.last_recorded_at THEN EXCLUDED.last_status ELSE t.last_status END,
+            last_temperature  = CASE WHEN EXCLUDED.last_recorded_at &gt;= t.last_recorded_at THEN EXCLUDED.last_temperature ELSE t.last_temperature END,
+            last_vibration    = CASE WHEN EXCLUDED.last_recorded_at &gt;= t.last_recorded_at THEN EXCLUDED.last_vibration ELSE t.last_vibration END,
+            last_recorded_at  = GREATEST(t.last_recorded_at, EXCLUDED.last_recorded_at)
+    </insert>
+
+    <insert id="overwrite">
+        <include refid="insertRows"/>
+            sample_count      = EXCLUDED.sample_count,
+            temperature_sum   = EXCLUDED.temperature_sum,
+            temperature_count = EXCLUDED.temperature_count,
+            temperature_min   = EXCLUDED.temperature_min,
+            temperature_max   = EXCLUDED.temperature_max,
+            vibration_sum     = EXCLUDED.vibration_sum,
+            vibration_count   = EXCLUDED.vibration_count,
+            vibration_min     = EXCLUDED.vibration_min,
+            vibration_max     = EXCLUDED.vibration_max,
+            run_sec           = EXCLUDED.run_sec,
+            warn_sec          = EXCLUDED.warn_sec,
+            down_sec          = EXCLUDED.down_sec,
+            idle_sec          = EXCLUDED.idle_sec,
+            last_status       = EXCLUDED.last_status,
+            last_recorded_at  = EXCLUDED.last_recorded_at,
+            last_temperature  = EXCLUDED.last_temperature,
+            last_vibration    = EXCLUDED.last_vibration
+    </insert>
+
+    <!-- OEE 합계. 시각 칸은 서울 기준 정각 · 5분 단위로 맞춘다(OeeMapper와 같다).
+         작업지시 조건이면 그 지시의 시작 ~ 완료(진행 중이면 지금) 앞뒤 1분으로 시각 범위도 좁혀 bucket_start 인덱스를 타게 한다 -->
+    <select id="sumSeconds" resultType="map">
+        SELECT
+            equipment_id AS "equipmentId",
+            <if test="bucketSec != null">
+                date_bin(#{bucketSec} * INTERVAL '1 second', bucket_start, TIMESTAMPTZ '2000-01-01 00:00:00+09') AS "bucketStart",
+            </if>
+            sum(sample_count)       AS "plannedSec",
+            sum(run_sec + warn_sec) AS "runSec",
+            sum(down_sec)           AS "downSec",
+            sum(idle_sec)           AS "idleSec"
+        FROM equipment_sensor_minute
+        <choose>
+            <when test="workOrderId != null">
+                WHERE work_order_id = #{workOrderId}
+                  AND bucket_start &gt;= (SELECT date_trunc('minute', started_at) - INTERVAL '1 minute' FROM work_order WHERE work_order_id = #{workOrderId})
+                  AND bucket_start &lt;= (SELECT COALESCE(completed_at, now()) + INTERVAL '1 minute' FROM work_order WHERE work_order_id = #{workOrderId})
+            </when>
+            <otherwise>
+                WHERE work_order_id &lt;&gt; ''
+                  AND bucket_start &gt;= date_trunc('minute', #{from}::timestamptz)
+                  AND bucket_start &lt; #{to}
+            </otherwise>
+        </choose>
+        GROUP BY 1<if test="bucketSec != null">, 2</if>
+    </select>
+
+    <select id="sumStatusSeconds" resultType="map">
+        SELECT
+            equipment_id  AS "equipmentId",
+            sum(run_sec)  AS "runSec",
+            sum(warn_sec) AS "warnSec",
+            sum(down_sec) AS "downSec",
+            sum(idle_sec) AS "idleSec"
+        FROM equipment_sensor_minute
+        WHERE bucket_start &gt;= date_trunc('minute', #{from}::timestamptz)
+        GROUP BY equipment_id
+    </select>
+
+    <!-- 한 분에 작업지시가 바뀌면 행이 둘이라 분마다 합친다 -->
+    <select id="findMinutes" resultType="map">
+        SELECT
+            bucket_start AS "recordedAt",
+            (array_agg(last_status ORDER BY last_recorded_at DESC))[1] AS "status",
+            round(sum(temperature_sum) / NULLIF(sum(temperature_count), 0), 2) AS "temperature",
+            round(sum(vibration_sum) / NULLIF(sum(vibration_count), 0), 2)     AS "vibration"
+        FROM equipment_sensor_minute
+        WHERE equipment_id = #{equipmentId}
+          AND bucket_start &gt;= date_trunc('minute', #{from}::timestamptz)
+        GROUP BY bucket_start
+        ORDER BY bucket_start
+    </select>
+
+    <!-- 설비마다 기본 키 (equipment_id, bucket_start, ...)를 거꾸로 읽어 1행만 -->
+    <select id="findLastPerEquipment" resultType="map">
+        SELECT
+            e.equipment_id     AS "equipmentId",
+            m.last_recorded_at AS "recordedAt",
+            m.last_status      AS "status",
+            m.last_temperature AS "temperature",
+            m.last_vibration   AS "vibration"
+        FROM equipment e
+        CROSS JOIN LATERAL (
+            SELECT last_recorded_at, last_status, last_temperature, last_vibration
+            FROM equipment_sensor_minute s
+            WHERE s.equipment_id = e.equipment_id
+            ORDER BY s.bucket_start DESC, s.last_recorded_at DESC
+            LIMIT 1
+        ) m
+        ORDER BY e.equipment_id
+    </select>
+
+    <select id="findLastRecordedAt" resultType="java.time.OffsetDateTime">
+        SELECT last_recorded_at FROM equipment_sensor_minute
+        WHERE equipment_id = #{equipmentId}
+        ORDER BY bucket_start DESC, last_recorded_at DESC
+        LIMIT 1
+    </select>
+
+</mapper>

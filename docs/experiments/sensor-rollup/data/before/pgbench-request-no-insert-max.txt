@@ -1,0 +1,26 @@
+pgbench (17.4)
+progress: 10.0 s, 3998.5 tps, lat 2.481 ms stddev 0.690, 0 failed
+progress: 20.0 s, 4527.6 tps, lat 2.209 ms stddev 0.195, 0 failed
+progress: 30.0 s, 4524.0 tps, lat 2.210 ms stddev 0.173, 0 failed
+transaction type: /Users/junsik/Desktop/project/mes-simulation-dashboard-app/bench/sensor-rollup/pgbench/request-no-insert.sql
+scaling factor: 1
+query mode: simple
+number of clients: 10
+number of threads: 4
+maximum number of tries: 1
+duration: 30 s
+number of transactions actually processed: 130533
+number of failed transactions: 0 (0.000%)
+latency average = 2.293 ms
+latency stddev = 0.430 ms
+initial connection time = 77.089 ms
+tps = 4361.264071 (without initial connection time)
+statement latencies in milliseconds and failures:
+         0.000           0  \set dev random(1, 200)
+         0.022           0  BEGIN;
+         0.035           0  SELECT run_id::text FROM producer_run WHERE id = 1;
+         2.015           0  SELECT 1 FROM pg_advisory_xact_lock(4201);
+         0.076           0  UPDATE work_order w SET status = 'COMPLETED', completed_at = now()
+         0.068           0  UPDATE work_order SET status = 'IN_PROGRESS', started_at = COALESCE(started_at, now())
+         0.051           0  SELECT w.work_order_id, w.planned_qty FROM work_order w JOIN item i ON i.item_code = w.item_code WHERE w.status = 'IN_PROGRESS'
+         0.025           0  COMMIT;

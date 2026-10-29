@@ -1,0 +1,26 @@
+Finalize GroupAggregate  (cost=19558.93..19572.35 rows=50 width=42) (actual time=45.893..46.661 rows=50 loops=1)
+  Group Key: equipment_id
+  Buffers: shared hit=2146 read=9077
+  ->  Gather Merge  (cost=19558.93..19570.60 rows=100 width=42) (actual time=45.890..46.628 rows=150 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=2146 read=9077
+        ->  Sort  (cost=18558.91..18559.04 rows=50 width=42) (actual time=44.829..44.831 rows=50 loops=3)
+              Sort Key: equipment_id
+              Sort Method: quicksort  Memory: 28kB
+              Buffers: shared hit=2146 read=9077
+              Worker 0:  Sort Method: quicksort  Memory: 28kB
+              Worker 1:  Sort Method: quicksort  Memory: 28kB
+              ->  Partial HashAggregate  (cost=18557.00..18557.50 rows=50 width=42) (actual time=44.806..44.809 rows=50 loops=3)
+                    Group Key: equipment_id
+                    Batches: 1  Memory Usage: 24kB
+                    Buffers: shared hit=2130 read=9077
+                    Worker 0:  Batches: 1  Memory Usage: 24kB
+                    Worker 1:  Batches: 1  Memory Usage: 24kB
+                    ->  Parallel Seq Scan on equipment_sensor_minute  (cost=0.00..15407.00 rows=210000 width=30) (actual time=0.018..23.906 rows=168000 loops=3)
+                          Filter: (((work_order_id)::text <> ''::text) AND (bucket_start < '2026-10-28 00:00:00+09'::timestamp with time zone) AND (bucket_start >= ('2026-10-28 00:00:00+09'::timestamp with time zone - '7 days'::interval)))
+                          Buffers: shared hit=2130 read=9077
+Planning:
+  Buffers: shared hit=8
+Planning Time: 0.086 ms
+Execution Time: 46.679 ms

@@ -1,0 +1,4 @@
+devices,requests,req_per_sec,p50_ms,p95_ms,p99_ms,max_ms,failed_pct,dropped,db_rows_per_sec,sensor_rows_per_sec,commits_per_sec,wal_kb_per_sec,wal_bytes_per_request,lock_wait_avg,lock_wait_max,sensor_bytes_per_row,sensor_mb_per_day,sensor_gb_per_year,minute_writes_per_sec,status_change_writes_per_sec,spool_mb_per_day,wal_gb_per_day
+500,60001,502.5,0.84,1.29,1.96,26.56,0,0,9.4,6.5,499.2,5.2,11,0.0,0,311,178.8,63.72,8.38,1.88,1967,0.43
+1000,120000,1004.5,0.57,0.84,2.06,78.56,0,0,18.7,16.7,998.9,9.1,9,0.0,0,257,379.9,135.42,16.74,3.82,3934,0.75
+2000,240001,2005.0,0.4,0.71,2.7,263.23,0,0,37.1,33.4,1996.6,17.5,9,0.0,0,272,789.5,281.42,33.42,7.4,7944,1.44

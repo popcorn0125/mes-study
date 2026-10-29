@@ -15,3 +15,10 @@ mybatis.configuration.call-setters-on-nulls=true
 
 # 센서 로그를 보내는 프론트 개발 서버 주소(CORS 허용)
 app.cors.allowed-origins=http://localhost:5173
+
+# 센서 1분 요약 · 원본 아카이브(docs/plans/sensor-rollup.md). 모두 기본값이 있어 적지 않아도 된다.
+# 1초 원본은 스풀(CSV)에 이어 쓰고 1시간마다 Parquet으로 바꾼다. 경로는 서버를 띄운 폴더 기준(gitignore: data/)
+#mes.sensor.spool-dir=data/spool
+#mes.sensor.archive-dir=data/archive/sensor-log
+# 분이 끝나고 이만큼(초) 기다린 뒤 요약을 DB에 넣는다
+#mes.sensor.flush-grace-sec=5

@@ -1,0 +1,15 @@
+HashAggregate  (cost=6515.83..6516.33 rows=50 width=42) (actual time=0.579..0.582 rows=50 loops=1)
+  Group Key: equipment_id
+  Batches: 1  Memory Usage: 24kB
+  Buffers: shared hit=122
+  ->  Bitmap Heap Scan on equipment_sensor_minute  (cost=44.79..6481.25 rows=2767 width=26) (actual time=0.033..0.156 rows=3000 loops=1)
+        Recheck Cond: ((bucket_start >= ('2026-10-28 00:00:00+09'::timestamp with time zone - '01:00:00'::interval)) AND (bucket_start < '2026-10-28 00:00:00+09'::timestamp with time zone))
+        Heap Blocks: exact=117
+        Buffers: shared hit=122
+        ->  Bitmap Index Scan on equipment_sensor_minute_bucket_idx  (cost=0.00..44.09 rows=2767 width=0) (actual time=0.030..0.030 rows=3000 loops=1)
+              Index Cond: ((bucket_start >= ('2026-10-28 00:00:00+09'::timestamp with time zone - '01:00:00'::interval)) AND (bucket_start < '2026-10-28 00:00:00+09'::timestamp with time zone))
+              Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=8
+Planning Time: 0.021 ms
+Execution Time: 0.587 ms

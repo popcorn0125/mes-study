@@ -34,12 +34,15 @@ class DowntimeServiceDbTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private SensorAggregator aggregator;
+
     /** 30분 전 정각 초. 오늘 · 1시간 구간 안이다(자정 직후 30분 동안 돌리면 오늘 구간 밖일 수 있다) */
     private final OffsetDateTime base = OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(30).truncatedTo(ChronoUnit.SECONDS);
 
     @BeforeEach
     void clean() {
-        TestDb.resetWithWorkOrder(jdbc);
+        TestDb.resetWithWorkOrder(jdbc, aggregator);
     }
 
     private static Map<String, Object> log(String equipmentId, OffsetDateTime at, String status, String alarmCode) {
@@ -87,20 +90,24 @@ class DowntimeServiceDbTest {
         assertThat(downtimes()).extracting(d -> d.get("duration_sec")).containsExactly(3);
     }
 
+    private int pendingSamples() {
+        return aggregator.pendingRows().stream().mapToInt(r -> (Integer) r.get("sampleCount")).sum();
+    }
+
     @Test
     void 알람이_있으면_알람의_사유가_자동으로_붙고_다른_설비의_알람은_전체가_저장되지_않는다() {
         down("PACKER_01", 0, 2, "PACKER_FILM_EMPTY");
 
         assertThat(downtimes().get(0)).containsEntry("reason_code", "MATERIAL_SHORTAGE").containsEntry("reason_source", "AUTO");
 
-        int logs = jdbc.queryForObject("SELECT count(*) FROM equipment_sensor_log", Integer.class);
+        int samples = pendingSamples();
         assertThatThrownBy(() -> sensorLogService.save(List.of(
                 log("WINDER_01", base.plusSeconds(10), "RUN", null),
                 log("CNC_01", base.plusSeconds(10), "DOWN", "PACKER_JAM"))))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> sensorLogService.save(List.of(log("CNC_01", base.plusSeconds(11), "DOWN", "NO_SUCH"))))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM equipment_sensor_log", Integer.class)).isEqualTo(logs);
+        assertThat(pendingSamples()).isEqualTo(samples);
         assertThat(downtimes()).hasSize(1);
     }
 

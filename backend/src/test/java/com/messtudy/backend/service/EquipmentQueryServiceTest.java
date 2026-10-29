@@ -9,44 +9,42 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import com.messtudy.backend.mapper.SensorLogQueryMapper;
-
-/** DB 없이 조회 기간 검사와 매퍼 전달만 확인한다(매퍼는 받은 인자를 기록만 하는 가짜). */
+/** DB 없이 조회 기간 검사와 전달만 확인한다(SensorRollupService는 받은 인자를 기록만 하는 가짜). */
 class EquipmentQueryServiceTest {
 
-    /** 가짜 매퍼가 받은 호출 기록: "메서드 이름 equipmentId minutes" */
+    /** 가짜가 받은 호출 기록: "메서드 이름 equipmentId minutes" */
     private final List<String> calls = new ArrayList<>();
 
-    private final SensorLogQueryMapper mapper = new SensorLogQueryMapper() {
+    private final SensorRollupService rollup = new SensorRollupService(null, null, null, null, 5) {
         @Override
-        public List<Map<String, Object>> findLatestPerEquipment() {
+        public List<Map<String, Object>> latest() {
             calls.add("latest");
             return List.of();
         }
 
         @Override
-        public List<Map<String, Object>> findRecentLogs(String equipmentId, int minutes) {
+        public List<Map<String, Object>> recentLogs(String equipmentId, int minutes) {
             calls.add("recent " + equipmentId + " " + minutes);
             return List.of();
         }
 
         @Override
-        public List<Map<String, Object>> countStatusSeconds(int minutes) {
+        public List<Map<String, Object>> statusSeconds(int minutes) {
             calls.add("summary " + minutes);
             return List.of();
         }
 
         @Override
-        public List<Map<String, Object>> findStatusChanges(String equipmentId, int minutes) {
+        public List<Map<String, Object>> statusChanges(String equipmentId, int minutes) {
             calls.add("changes " + equipmentId + " " + minutes);
             return List.of();
         }
     };
 
-    private final EquipmentQueryService service = new EquipmentQueryService(mapper);
+    private final EquipmentQueryService service = new EquipmentQueryService(rollup);
 
     @Test
-    void 허용_범위의_기간은_그대로_매퍼에_넘긴다() {
+    void 허용_범위의_기간은_그대로_넘긴다() {
         service.findLatest();
         service.findRecentLogs("CNC_01", 1);
         service.countStatusSeconds(1440);

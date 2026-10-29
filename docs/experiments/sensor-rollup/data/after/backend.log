@@ -1,0 +1,30 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.5.16)
+
+2026-10-29T01:22:59.650+09:00  INFO 66749 --- [backend] [           main] c.messtudy.backend.BackendApplication    : Starting BackendApplication v0.0.1-SNAPSHOT using Java 17.0.14 with PID 66749 (/Users/junsik/Desktop/project/mes-simulation-dashboard-app/backend/build/libs/backend-0.0.1-SNAPSHOT.jar started by junsik in /Users/junsik/Desktop/project/mes-simulation-dashboard-app)
+2026-10-29T01:22:59.653+09:00  INFO 66749 --- [backend] [           main] c.messtudy.backend.BackendApplication    : No active profile set, falling back to 1 default profile: "default"
+2026-10-29T01:23:00.129+09:00  INFO 66749 --- [backend] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8081 (http)
+2026-10-29T01:23:00.137+09:00  INFO 66749 --- [backend] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-29T01:23:00.137+09:00  INFO 66749 --- [backend] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.55]
+2026-10-29T01:23:00.150+09:00  INFO 66749 --- [backend] [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-10-29T01:23:00.151+09:00  INFO 66749 --- [backend] [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 468 ms
+2026-10-29T01:23:00.204+09:00  INFO 66749 --- [backend] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-10-29T01:23:00.303+09:00  INFO 66749 --- [backend] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@6968bcec
+2026-10-29T01:23:00.304+09:00  INFO 66749 --- [backend] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-10-29T01:23:01.412+09:00  INFO 66749 --- [backend] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8081 (http) with context path '/'
+2026-10-29T01:23:01.417+09:00  INFO 66749 --- [backend] [           main] c.messtudy.backend.BackendApplication    : Started BackendApplication in 1.955 seconds (process running for 2.135)
+2026-10-29T01:23:02.372+09:00  INFO 66749 --- [backend] [nio-8081-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-29T01:23:02.372+09:00  INFO 66749 --- [backend] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-10-29T01:23:02.373+09:00  INFO 66749 --- [backend] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+2026-10-29T01:38:03.946+09:00  INFO 66749 --- [backend] [ionShutdownHook] o.s.b.w.e.tomcat.GracefulShutdown        : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-29T01:38:03.950+09:00  INFO 66749 --- [backend] [tomcat-shutdown] o.s.b.w.e.tomcat.GracefulShutdown        : Graceful shutdown complete
+2026-10-29T01:38:03.986+09:00  INFO 66749 --- [backend] [ionShutdownHook] c.m.backend.service.SensorRollupJobs     : 센서 요약: 종료하며 열린 요약 400행을 넣었다
+2026-10-29T01:38:03.987+09:00  INFO 66749 --- [backend] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+2026-10-29T01:38:03.989+09:00  INFO 66749 --- [backend] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.

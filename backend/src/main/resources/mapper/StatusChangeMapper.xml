@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.messtudy.backend.mapper.StatusChangeMapper">
+
+    <!-- 라인 잠금(4201)과 다른 키 공간(4202). 설비 이름의 해시라 서로 다른 설비가 드물게 같은 잠금을 나눌 수 있지만 순서만 생길 뿐 틀리지 않는다 -->
+    <select id="lockEquipment" resultType="int">
+        SELECT 1 FROM pg_advisory_xact_lock(4202, hashtext(#{equipmentId}))
+    </select>
+
+    <select id="findOpen" resultType="map">
+        SELECT equipment_id AS "equipmentId", status AS "status", started_at AS "startedAt"
+        FROM equipment_status_change
+        WHERE ended_at IS NULL
+    </select>
+
+    <update id="close">
+        UPDATE equipment_status_change
+        SET ended_at = GREATEST(started_at + INTERVAL '1 second', #{endedAt})
+        WHERE equipment_id = #{equipmentId} AND ended_at IS NULL
+    </update>
+
+    <insert id="open">
+        INSERT INTO equipment_status_change (equipment_id, status, started_at) VALUES (#{equipmentId}, #{status}, #{startedAt})
+    </insert>
+
+    <!-- 식이 인덱스(equipment_status_change_end_idx)와 같아야 인덱스를 탄다 -->
+    <select id="findSince" resultType="map">
+        SELECT status AS "status", started_at AS "startedAt", ended_at AS "endedAt"
+        FROM equipment_status_change
+        WHERE equipment_id = #{equipmentId}
+          AND COALESCE(ended_at, 'infinity'::timestamptz) &gt; #{from}
+        ORDER BY started_at DESC
+    </select>
+
+</mapper>

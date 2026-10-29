@@ -5,8 +5,8 @@
     <!-- OEE 합계. 비율은 OeeService가 계산한다. 별칭은 큰따옴표로 감싸 Map 키를 camelCase로 둔다.
          조건(둘 중 하나)
          - from · to: 구간 [from, to)
-         - workOrderId: 그 지시의 로그 · 이벤트만. 시작 ~ 완료(진행 중이면 지금) 앞뒤 1분으로 시각 범위도 좁혀
-           recorded_at · occurred_at 인덱스를 타게 한다(시뮬레이터 시계와 서버 시계가 조금 달라도 빠지지 않게 여유를 둔다)
+         - workOrderId: 그 지시의 이벤트만. 시작 ~ 완료(진행 중이면 지금) 앞뒤 1분으로 시각 범위도 좁혀
+           occurred_at 인덱스를 타게 한다(시뮬레이터 시계와 서버 시계가 조금 달라도 빠지지 않게 여유를 둔다)
          bucketSec가 있으면 시각 칸(서울 기준 정각 · 5분 단위로 맞춘다)마다 나눈다 -->
 
     <sql id="bucket">
@@ -28,23 +28,6 @@
             </otherwise>
         </choose>
     </sql>
-
-    <!-- 설비 · (시각 칸)마다 작업지시가 있던 초와 그중 상태별 초. 센서 로그 1행 = 1초 -->
-    <select id="sumSeconds" resultType="map">
-        SELECT
-            equipment_id AS "equipmentId",
-            <if test="bucketSec != null">
-                <include refid="bucket"><property name="column" value="recorded_at"/></include> AS "bucketStart",
-            </if>
-            count(*)                                          AS "plannedSec",
-            count(*) FILTER (WHERE status IN ('RUN', 'WARN')) AS "runSec",
-            count(*) FILTER (WHERE status = 'DOWN')           AS "downSec",
-            count(*) FILTER (WHERE status = 'IDLE')           AS "idleSec"
-        FROM equipment_sensor_log
-        WHERE work_order_id IS NOT NULL
-            <include refid="window"><property name="column" value="recorded_at"/></include>
-        GROUP BY 1<if test="bucketSec != null">, 2</if>
-    </select>
 
     <!-- 설비 · (시각 칸)마다 생산한 양품 · 불량 수 -->
     <select id="sumCounts" resultType="map">

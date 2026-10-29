@@ -1,0 +1,4 @@
+table,rows,heap_bytes,index_bytes,total_bytes
+equipment_sensor_log,30239626,3301933056,1062240256,4365115392
+equipment_sensor_minute,504000,91807744,34242560,126099456
+equipment_status_change,67289,4595712,4997120,9625600

@@ -1,0 +1,2 @@
+file,rows,csv_bytes,parquet_bytes,csv_bytes_per_row,parquet_bytes_per_row
+sensor-2026-10-29T01.csv,601502,28952396,1912535,48.1,3.2

@@ -1,0 +1,12 @@
+HashAggregate  (cost=558195.96..637048.67 rows=2325352 width=50) (actual time=936.227..936.441 rows=1200 loops=1)
+  Group Key: equipment_id, date_bin('01:00:00'::interval, recorded_at, '2000-01-01 00:00:00+09'::timestamp with time zone)
+  Planned Partitions: 64  Batches: 1  Memory Usage: 1809kB
+  Buffers: shared hit=86070 read=64234
+  ->  Index Scan using equipment_sensor_log_recorded_at_idx on equipment_sensor_log  (cost=0.44..178496.19 rows=4248389 width=22) (actual time=0.008..463.869 rows=4320000 loops=1)
+        Index Cond: ((recorded_at >= ('2026-10-28 00:00:00+09'::timestamp with time zone - '24:00:00'::interval)) AND (recorded_at < '2026-10-28 00:00:00+09'::timestamp with time zone))
+        Filter: (work_order_id IS NOT NULL)
+        Buffers: shared hit=86070 read=64234
+Planning:
+  Buffers: shared read=4
+Planning Time: 0.083 ms
+Execution Time: 936.602 ms

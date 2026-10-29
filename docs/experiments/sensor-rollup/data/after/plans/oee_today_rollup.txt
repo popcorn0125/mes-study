@@ -1,0 +1,31 @@
+Finalize GroupAggregate  (cost=14274.18..14287.59 rows=50 width=42) (actual time=6.278..6.821 rows=50 loops=1)
+  Group Key: equipment_id
+  Buffers: shared hit=1747
+  ->  Gather Merge  (cost=14274.18..14285.84 rows=100 width=42) (actual time=6.266..6.791 rows=149 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=1747
+        ->  Sort  (cost=13274.15..13274.28 rows=50 width=42) (actual time=5.282..5.283 rows=50 loops=3)
+              Sort Key: equipment_id
+              Sort Method: quicksort  Memory: 28kB
+              Buffers: shared hit=1747
+              Worker 0:  Sort Method: quicksort  Memory: 28kB
+              Worker 1:  Sort Method: quicksort  Memory: 28kB
+              ->  Partial HashAggregate  (cost=13272.24..13272.74 rows=50 width=42) (actual time=5.265..5.268 rows=50 loops=3)
+                    Group Key: equipment_id
+                    Batches: 1  Memory Usage: 24kB
+                    Buffers: shared hit=1731
+                    Worker 0:  Batches: 1  Memory Usage: 24kB
+                    Worker 1:  Batches: 1  Memory Usage: 24kB
+                    ->  Parallel Bitmap Heap Scan on equipment_sensor_minute  (cost=1035.90..12831.09 rows=29410 width=30) (actual time=0.389..2.248 rows=24000 loops=3)
+                          Recheck Cond: ((bucket_start >= ('2026-10-28 00:00:00+09'::timestamp with time zone - '24:00:00'::interval)) AND (bucket_start < '2026-10-28 00:00:00+09'::timestamp with time zone))
+                          Filter: ((work_order_id)::text <> ''::text)
+                          Heap Blocks: exact=611
+                          Buffers: shared hit=1731
+                          ->  Bitmap Index Scan on equipment_sensor_minute_bucket_idx  (cost=0.00..1018.25 rows=70583 width=0) (actual time=1.038..1.038 rows=72000 loops=1)
+                                Index Cond: ((bucket_start >= ('2026-10-28 00:00:00+09'::timestamp with time zone - '24:00:00'::interval)) AND (bucket_start < '2026-10-28 00:00:00+09'::timestamp with time zone))
+                                Buffers: shared hit=81
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.041 ms
+Execution Time: 6.834 ms

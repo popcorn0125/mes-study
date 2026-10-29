@@ -27,9 +27,12 @@ class QualityServiceDbTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private SensorAggregator aggregator;
+
     @BeforeEach
     void clean() {
-        TestDb.resetWithWorkOrder(jdbc);
+        TestDb.resetWithWorkOrder(jdbc, aggregator);
         jdbc.update("UPDATE work_order SET started_at = now() - INTERVAL '30 minutes'");
         jdbc.update("INSERT INTO work_order (work_order_id, item_code, planned_qty, status, started_at, completed_at) "
                 + "VALUES (?, 'MOTOR_B', 10, 'COMPLETED', now() - INTERVAL '50 minutes', now() - INTERVAL '40 minutes')", OTHER);

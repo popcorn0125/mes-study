@@ -5,11 +5,10 @@ import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
-import com.messtudy.backend.mapper.SensorLogQueryMapper;
 
 /**
- * 설비 관리 화면이 쓰는 센서 로그 조회.
- * 조회 기간(분)은 1분 ~ 1440분(하루)만 받는다. 너무 긴 기간은 로그를 너무 많이 읽기 때문이다.
+ * 설비 관리 화면이 쓰는 센서 조회. 원본은 DB에 없으므로 메모리(최근 10분) · 1분 요약 · 상태 이력에서 읽는다(SensorRollupService).
+ * 조회 기간(분)은 1분 ~ 1440분(하루)만 받는다.
  */
 @Service
 public class EquipmentQueryService {
@@ -17,24 +16,24 @@ public class EquipmentQueryService {
     static final int MIN_MINUTES = 1;
     static final int MAX_MINUTES = 1440;
 
-    private final SensorLogQueryMapper sensorLogQueryMapper;
+    private final SensorRollupService sensorRollupService;
 
-    public EquipmentQueryService(SensorLogQueryMapper sensorLogQueryMapper) {
-        this.sensorLogQueryMapper = sensorLogQueryMapper;
+    public EquipmentQueryService(SensorRollupService sensorRollupService) {
+        this.sensorRollupService = sensorRollupService;
     }
 
     /** 장비마다 가장 최근 로그 1건(현재 상태 · 온도 · 진동) */
     public List<Map<String, Object>> findLatest() {
-        return sensorLogQueryMapper.findLatestPerEquipment();
+        return sensorRollupService.latest();
     }
 
     /**
-     * 장비 하나의 최근 n분 로그를 시간순으로 돌려준다.
+     * 장비 하나의 최근 n분 로그를 시간순으로 돌려준다(10분 이하는 1초 원본, 넘으면 1분마다 평균 1점).
      *
      * @throws InvalidPayloadException minutes가 1~1440 밖일 때
      */
     public List<Map<String, Object>> findRecentLogs(String equipmentId, int minutes) {
-        return sensorLogQueryMapper.findRecentLogs(equipmentId, requireMinutes(minutes));
+        return sensorRollupService.recentLogs(equipmentId, requireMinutes(minutes));
     }
 
     /**
@@ -43,7 +42,7 @@ public class EquipmentQueryService {
      * @throws InvalidPayloadException minutes가 1~1440 밖일 때
      */
     public List<Map<String, Object>> countStatusSeconds(int minutes) {
-        return sensorLogQueryMapper.countStatusSeconds(requireMinutes(minutes));
+        return sensorRollupService.statusSeconds(requireMinutes(minutes));
     }
 
     /**
@@ -52,7 +51,7 @@ public class EquipmentQueryService {
      * @throws InvalidPayloadException minutes가 1~1440 밖일 때
      */
     public List<Map<String, Object>> findStatusChanges(String equipmentId, int minutes) {
-        return sensorLogQueryMapper.findStatusChanges(equipmentId, requireMinutes(minutes));
+        return sensorRollupService.statusChanges(equipmentId, requireMinutes(minutes));
     }
 
     /** 조회 기간이 허용 범위 안인지 확인하고 그대로 돌려준다. 벗어나면 400으로 응답하게 예외를 낸다. */

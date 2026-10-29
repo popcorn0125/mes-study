@@ -28,19 +28,35 @@ class OeeServiceDbTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private SensorAggregator aggregator;
+
     @BeforeEach
     void clean() {
-        TestDb.resetWithWorkOrder(jdbc);
+        TestDb.resetWithWorkOrder(jdbc, aggregator);
         jdbc.update("UPDATE work_order SET started_at = now() - INTERVAL '30 minutes'");
         jdbc.update("INSERT INTO work_order (work_order_id, item_code, planned_qty, status, started_at, completed_at) "
                 + "VALUES (?, 'MOTOR_A', 10, 'COMPLETED', now() - INTERVAL '50 minutes', now() - INTERVAL '40 minutes')", OTHER);
     }
 
-    /** 지금부터 secondsAgo초 전까지 거꾸로 count초 동안 1초에 1행씩 로그를 넣는다 */
+    /**
+     * 지금부터 secondsAgo초 전까지 거꾸로 count초 동안 1초에 1행을 받은 것처럼 1분 요약에 넣는다
+     * (메모리 버킷을 플러시한 것과 같은 행: 분마다 받은 행 수 · 상태별 초, 같은 키는 더한다)
+     */
     private void logs(String equipmentId, String workOrderId, String status, int secondsAgo, int count) {
-        jdbc.update("INSERT INTO equipment_sensor_log (equipment_id, recorded_at, status, work_order_id) "
-                + "SELECT ?, now() - (? + s) * INTERVAL '1 second', ?, ? FROM generate_series(0, ? - 1) s",
-                equipmentId, secondsAgo, status, workOrderId, count);
+        jdbc.update("""
+                INSERT INTO equipment_sensor_minute AS t (equipment_id, bucket_start, work_order_id, sample_count,
+                    run_sec, warn_sec, down_sec, idle_sec, last_status, last_recorded_at)
+                SELECT ?, date_trunc('minute', at), COALESCE(?, ''), count(*),
+                       count(*) FILTER (WHERE ? = 'RUN'), count(*) FILTER (WHERE ? = 'WARN'),
+                       count(*) FILTER (WHERE ? = 'DOWN'), count(*) FILTER (WHERE ? = 'IDLE'), ?, max(at)
+                FROM (SELECT now() - (? + s) * INTERVAL '1 second' AS at FROM generate_series(0, ? - 1) s) g
+                GROUP BY 2
+                ON CONFLICT (equipment_id, bucket_start, work_order_id) DO UPDATE SET
+                    sample_count = t.sample_count + EXCLUDED.sample_count, run_sec = t.run_sec + EXCLUDED.run_sec,
+                    warn_sec = t.warn_sec + EXCLUDED.warn_sec, down_sec = t.down_sec + EXCLUDED.down_sec,
+                    idle_sec = t.idle_sec + EXCLUDED.idle_sec
+                """, equipmentId, workOrderId, status, status, status, status, status, secondsAgo, count);
     }
 
     private void event(String equipmentId, String workOrderId, int secondsAgo, int good, int bad) {

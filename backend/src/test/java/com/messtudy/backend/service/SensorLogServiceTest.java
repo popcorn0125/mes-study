@@ -15,17 +15,49 @@ import org.junit.jupiter.api.Test;
 
 import com.messtudy.backend.mapper.DowntimeMapper;
 import com.messtudy.backend.mapper.ProductionPerformanceMapper;
-import com.messtudy.backend.mapper.SensorLogMapper;
+import com.messtudy.backend.mapper.StatusChangeMapper;
 
 /** DB 없이 분리 · 변환 · 검증만 확인한다(매퍼는 받은 값을 기록만 하는 가짜). */
 class SensorLogServiceTest {
 
-    private final List<Map<String, Object>> insertedLogs = new ArrayList<>();
+    /** 스풀에 쓴(= 받은) 센서 값. 가짜 아카이브는 파일 대신 여기에 모은다 */
+    private final List<SensorReading> insertedLogs = new ArrayList<>();
     private final List<Map<String, Object>> upsertedRows = new ArrayList<>();
 
-    private final SensorLogMapper sensorLogMapper = logs -> {
-        insertedLogs.addAll(logs);
-        return logs.size();
+    private final SensorArchive archive = new SensorArchive("build/unused-spool", "build/unused-archive") {
+        @Override
+        public synchronized void append(List<SensorReading> readings) {
+            insertedLogs.addAll(readings);
+        }
+    };
+    /** 상태 이력 매퍼에 넘긴 것("open 설비 상태" · "close 설비") */
+    private final List<String> statusCalls = new ArrayList<>();
+    private final StatusChangeMapper statusChangeMapper = new StatusChangeMapper() {
+        @Override
+        public void lockEquipment(String equipmentId) {
+        }
+
+        @Override
+        public List<Map<String, Object>> findOpen() {
+            return List.of();
+        }
+
+        @Override
+        public int close(String equipmentId, OffsetDateTime endedAt) {
+            statusCalls.add("close " + equipmentId);
+            return 0;
+        }
+
+        @Override
+        public int open(String equipmentId, String status, OffsetDateTime startedAt) {
+            statusCalls.add("open " + equipmentId + " " + status);
+            return 1;
+        }
+
+        @Override
+        public List<Map<String, Object>> findSince(String equipmentId, OffsetDateTime from) {
+            return List.of();
+        }
     };
     private final List<Map<String, Object>> eventRows = new ArrayList<>();
     /** 매퍼를 부른 순서 */
@@ -79,7 +111,8 @@ class SensorLogServiceTest {
             return 1;
         }
     };
-    private final SensorLogService service = new SensorLogService(sensorLogMapper, productionMapper, downtimeMapper);
+    private final SensorLogService service = new SensorLogService(productionMapper, downtimeMapper, statusChangeMapper,
+            new SensorAggregator(), archive);
 
     /** 프론트가 보내는 것과 같은 모양의 항목(Jackson처럼 숫자는 Integer · Double) */
     private static Map<String, Object> item(String equipmentId, int totalCount) {
@@ -99,13 +132,10 @@ class SensorLogServiceTest {
         Map<String, Integer> result = service.save(List.of(item("CNC_01", 150), item("WINDER_01", 120)));
 
         assertThat(result).isEqualTo(Map.of("sensorLogs", 2, "productions", 2));
-        assertThat(insertedLogs.get(0)).isEqualTo(Map.of(
-                "equipmentId", "CNC_01",
-                "recordedAt", OffsetDateTime.parse("2026-10-24T23:37:12.451Z"),
-                "status", "RUN",
-                "workOrderId", "WO-20261024-001",
-                "temperature", new BigDecimal("82.4"),
-                "vibration", new BigDecimal("1.2")));
+        assertThat(insertedLogs.get(0)).isEqualTo(new SensorReading("CNC_01", Instant.parse("2026-10-24T23:37:12.451Z"),
+                "RUN", "WO-20261024-001", new BigDecimal("82.4"), new BigDecimal("1.2"), null));
+        // 처음 받는 설비라 설비마다 상태 구간을 하나씩 연다
+        assertThat(statusCalls).containsExactly("close CNC_01", "open CNC_01 RUN", "close WINDER_01", "open WINDER_01 RUN");
         assertThat(upsertedRows.get(0)).isEqualTo(Map.of(
                 "workOrderId", "WO-20261024-001",
                 "equipmentId", "CNC_01",
@@ -127,7 +157,7 @@ class SensorLogServiceTest {
     void 같은_작업지시_장비가_두_번_오면_실적은_마지막_값만_남긴다() {
         service.save(List.of(item("CNC_01", 150), item("WINDER_01", 120), item("CNC_01", 151)));
 
-        assertThat(insertedLogs).hasSize(3); // 센서 로그는 시계열이라 모두 남긴다
+        assertThat(insertedLogs).hasSize(2); // 같은 설비 · 같은 시각의 센서 값은 한 번만 받는다(재전송)
         assertThat(upsertedRows).hasSize(2);
         assertThat(upsertedRows.get(0)).containsEntry("equipmentId", "CNC_01").containsEntry("totalCount", 151);
     }
@@ -151,7 +181,8 @@ class SensorLogServiceTest {
         Map<String, Integer> result = service.save(List.of(idle, item("WINDER_01", 3)));
 
         assertThat(result).isEqualTo(Map.of("sensorLogs", 2, "productions", 1));
-        assertThat(insertedLogs.get(0)).containsEntry("status", "IDLE").containsEntry("workOrderId", null);
+        assertThat(insertedLogs.get(0).status()).isEqualTo("IDLE");
+        assertThat(insertedLogs.get(0).workOrderId()).isNull();
         assertThat(upsertedRows).extracting(row -> row.get("equipmentId")).containsExactly("WINDER_01");
     }
 
@@ -170,7 +201,8 @@ class SensorLogServiceTest {
 
         service.save(List.of(item));
 
-        assertThat(insertedLogs.get(0)).containsEntry("temperature", null).containsEntry("vibration", null);
+        assertThat(insertedLogs.get(0).temperature()).isNull();
+        assertThat(insertedLogs.get(0).vibration()).isNull();
     }
 
     @Test
@@ -286,7 +318,8 @@ class SensorLogServiceTest {
                 .containsEntry("workOrderId", "WO-20261024-001")
                 .containsEntry("recordedAt", OffsetDateTime.parse("2026-10-24T23:37:12.451Z"));
         assertThat(startedDowntimes.get(1)).containsEntry("alarmCode", null);
-        assertThat(insertedLogs.get(1)).doesNotContainKey("alarmCode"); // 센서 로그에는 알람을 남기지 않는다
+        // 원본(스풀 → Parquet)에는 알람도 남긴다. 받은 값은 설비 이름 순서다
+        assertThat(insertedLogs).extracting(SensorReading::alarmCode).containsExactly(null, "CNC_TOOL_BREAK", null);
     }
 
     @Test

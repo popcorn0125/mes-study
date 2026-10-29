@@ -64,11 +64,14 @@ public class OeeService {
     private final OeeMapper oeeMapper;
     private final MasterDataMapper masterDataMapper;
     private final WorkOrderMapper workOrderMapper;
+    private final SensorRollupService sensorRollupService;
 
-    public OeeService(OeeMapper oeeMapper, MasterDataMapper masterDataMapper, WorkOrderMapper workOrderMapper) {
+    public OeeService(OeeMapper oeeMapper, MasterDataMapper masterDataMapper, WorkOrderMapper workOrderMapper,
+            SensorRollupService sensorRollupService) {
         this.oeeMapper = oeeMapper;
         this.masterDataMapper = masterDataMapper;
         this.workOrderMapper = workOrderMapper;
+        this.sensorRollupService = sensorRollupService;
     }
 
     /**
@@ -86,7 +89,7 @@ public class OeeService {
         result.put("from", from);
         result.put("to", to);
         result.putAll(calculate(masterDataMapper.findEquipment(),
-                oeeMapper.sumSeconds(from, to, null, null), oeeMapper.sumCounts(from, to, null, null)));
+                sensorRollupService.sumSeconds(from, to, null, null), oeeMapper.sumCounts(from, to, null, null)));
         return result;
     }
 
@@ -103,7 +106,7 @@ public class OeeService {
         List<Map<String, Object>> equipment = masterDataMapper.findEquipment();
 
         // 같은 칸끼리 모은다(두 조회의 시각 객체는 다를 수 있어 Instant로 맞춘다)
-        Map<Instant, List<Map<String, Object>>> seconds = groupByBucket(oeeMapper.sumSeconds(from, to, null, range.bucketSec));
+        Map<Instant, List<Map<String, Object>>> seconds = groupByBucket(sensorRollupService.sumSeconds(from, to, null, range.bucketSec));
         Map<Instant, List<Map<String, Object>>> counts = groupByBucket(oeeMapper.sumCounts(from, to, null, range.bucketSec));
 
         List<Map<String, Object>> points = new ArrayList<>();
@@ -138,7 +141,7 @@ public class OeeService {
         result.put("from", workOrder.get("startedAt"));
         result.put("to", workOrder.get("completedAt"));
         result.putAll(calculate(masterDataMapper.findEquipment(),
-                oeeMapper.sumSeconds(null, null, workOrderId, null), oeeMapper.sumCounts(null, null, workOrderId, null)));
+                sensorRollupService.sumSeconds(null, null, workOrderId, null), oeeMapper.sumCounts(null, null, workOrderId, null)));
         return result;
     }
 

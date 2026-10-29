@@ -33,9 +33,12 @@ class ProducerServiceDbTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private SensorAggregator aggregator;
+
     @BeforeEach
     void clean() {
-        TestDb.reset(jdbc);
+        TestDb.reset(jdbc, aggregator);
     }
 
     private String releaseNew(int plannedQty, int priority) {
@@ -112,12 +115,30 @@ class ProducerServiceDbTest {
     }
 
     @Test
-    void 진행_중_지시가_없으면_센서_로그만_저장하고_지시는_null이다() {
+    void 진행_중_지시가_없으면_센서_값만_받고_지시는_null이다() {
         String run = (String) producerService.start().get("runId");
 
         Map<String, Object> result = producerService.receive(run, tick(null, 0));
 
         assertThat(result).containsEntry("sensorLogs", 5).containsEntry("productions", 0).containsEntry("workOrder", null);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM equipment_sensor_log WHERE status = 'IDLE'", Integer.class)).isEqualTo(5);
+        assertThat(aggregator.pendingRows()).hasSize(5).allSatisfy(r -> assertThat(r).containsEntry("idleSec", 1));
+    }
+
+    @Test
+    void 실적이_없는_센서만_요청은_라인_잠금을_잡지_않는다() throws Exception {
+        assertThat(ProducerService.hasProduction(tick(null, 0))).isFalse();
+        assertThat(ProducerService.hasProduction(tick("WO-1", 1))).isTrue();
+        assertThat(ProducerService.hasProduction(null)).isFalse();
+
+        // 다른 트랜잭션이 라인 잠금을 쥔 채로도 센서만 요청은 끝난다(실적 요청은 기다린다)
+        String run = (String) producerService.start().get("runId");
+        try (java.sql.Connection other = jdbc.getDataSource().getConnection()) {
+            other.setAutoCommit(false);
+            other.createStatement().execute("SELECT pg_advisory_xact_lock(4201)");
+            java.util.concurrent.CompletableFuture<Map<String, Object>> sensorOnly =
+                    java.util.concurrent.CompletableFuture.supplyAsync(() -> producerService.receive(run, tick(null, 0)));
+            assertThat(sensorOnly.get(5, java.util.concurrent.TimeUnit.SECONDS)).containsEntry("sensorLogs", 5);
+            other.rollback();
+        }
     }
 }

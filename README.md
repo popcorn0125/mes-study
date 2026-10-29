@@ -6,6 +6,7 @@
 
 ```
 자동 시뮬레이션(3D) ──1초마다 POST──> Spring Boot ──> PostgreSQL ──> 조회 API ──2초마다 GET──> 생산 현황 · 설비 관리
+                                     └─ 센서 원본은 메모리 1분 요약(DB) + 1시간 Parquet 파일로
 ```
 
 ## 주요 기능
@@ -80,7 +81,7 @@ MES 기능 단위로 메뉴를 나눴습니다. 서버에 저장된 데이터로
 
 #### OEE 계산
 
-OEE(설비 종합 효율) = 가동률 × 성능 × 품질. 센서 로그 1행 = 1초, 수량은 생산 이벤트로 셉니다.
+OEE(설비 종합 효율) = 가동률 × 성능 × 품질. 시간은 1분 요약의 상태별 초(받은 센서 값 1건 = 1초), 수량은 생산 이벤트로 셉니다. 구간 시작은 분 단위로 내림합니다(최대 1분 차이).
 
 | 값 | 식 |
 |---|---|
@@ -170,6 +171,7 @@ Java 17과 PostgreSQL이 필요합니다. Gradle은 래퍼(`gradlew`)를 쓰므�
    - OEE(2026-10)의 센서 로그 `work_order_id` 열과 `production_event` 테이블은 서버를 다시 켜면 기존 DB에도 생깁니다(지울 필요 없음). 그 전 로그는 작업지시가 NULL이라 OEE 계획 가동 시간에서 빠집니다.
    - 품질(2026-10)의 `defect_type` · `production_defect` · `defect_event` 테이블도 서버를 다시 켜면 생깁니다. 그 전에 난 불량은 유형이 없어 품질 화면에 "미분류"로 보입니다.
    - 비가동(2026-10)의 `downtime_reason` · `equipment_alarm` · `downtime` 테이블도 서버를 다시 켜면 생깁니다. 그 전의 정지는 기록이 없어 비가동 파레토에 들어가지 않습니다.
+   - 1분 요약(2026-10)의 `equipment_sensor_minute` · `equipment_status_change` 테이블도 서버를 다시 켜면 생기고, 처음 한 번 기존 `equipment_sensor_log`로 채워집니다(지난 OEE · 상태 이력이 그대로 보임). 원본 테이블은 더 이상 쓰지 않지만 지우지 않습니다. 1초 원본은 서버를 띄운 폴더의 `data/spool`(받는 중) · `data/archive/sensor-log`(1시간 Parquet)에 남습니다(gitignore).
    - 작업지시 추가(2026-10) 전에 만든 DB라면 `production_performance`에 외래 키가 없습니다. 이 테이블을 지우고(`DROP TABLE production_performance;`) 서버를 다시 켜면 외래 키와 함께 다시 만듭니다(옛 실적은 사라짐).
    ```bash
    cd backend
@@ -184,7 +186,9 @@ Java 17과 PostgreSQL이 필요합니다. Gradle은 래퍼(`gradlew`)를 쓰므�
 | `item` · `equipment` · `defect_type` | 기준정보: 품목, 설비(라인 순서 · 기준 택트), 설비별 불량 유형 |
 | `work_order` | 작업지시. 상태 · 우선순위 · 납기와 하달 · 시작 · 완료 시각. 진행 중은 부분 유니크 인덱스로 최대 1건 |
 | `producer_run` | 지금 데이터를 보낼 수 있는 시뮬레이터 실행 ID(행 1개) |
-| `equipment_sensor_log` | 설비별 상태 · 온도 · 진동 · 진행 중이던 작업지시(없으면 NULL)를 1초마다 INSERT(시계열 로그) |
+| `equipment_sensor_minute` | 센서 1분 요약: 설비 · 분 · 작업지시마다 1행. 온도 · 진동의 평균(합 ÷ 개수) · 최대 · 최소, 상태별 초(RUN · WARN · DOWN · IDLE), 마지막 값. 서버 메모리에서 모았다가 분이 끝나면 UPSERT로 합친다 |
+| `equipment_status_change` | 설비 상태 이력: 상태가 바뀔 때만 1행(시작 · 끝, 진행 중이면 끝이 NULL) |
+| `equipment_sensor_log` | (2026-10까지) 1초 원본 시계열. 지금은 넣지 않고 1분 요약을 처음 채울 때만 읽는다 |
 | `production_performance` | (작업지시, 설비)마다 한 행(둘 다 외래 키). 최신 누적 수량으로 UPSERT하고, 지금 값보다 작은 수량(늦게 도착한 요청)으로는 덮어쓰지 않음 |
 | `production_event` | 누적 수량이 늘 때마다 늘어난 양품 · 불량을 한 행(전송 시각). 구간 · 시간대별 OEE · 품질 생산 수 |
 | `production_defect` | (작업지시, 설비, 유형)마다 누적 불량 수 한 행. (설비, 유형) 쌍 외래 키로 다른 설비의 유형을 막음 |
@@ -210,15 +214,36 @@ Java 17과 PostgreSQL이 필요합니다. Gradle은 래퍼(`gradlew`)를 쓰므�
 | `GET /api/v1/downtimes/summary?range=` | 구간의 정지 시간 · 정지 수(60초 이상) · 사유 미입력 · 순간 정지와 사유 파레토(누적 비율) |
 | `GET /api/v1/downtimes?range=&pending=true` | 구간의 60초 이상 · 진행 중 정지 목록(진행 중 먼저 · 최근 순). `pending=true`면 사유 없는 것만 |
 | `PUT /api/v1/downtimes/{id}/reason` | 사유 입력 · 고치기 `{reasonCode, enteredBy}` → 출처 MANUAL. 없는 정지 404, 없는 사유 · 빈 입력자 400 |
-| `GET /api/v1/equipment/latest` | 설비별 최신 로그 1건 |
-| `GET /api/v1/equipment/{id}/sensor-logs?minutes=10` | 설비 하나의 최근 로그(시간순) |
-| `GET /api/v1/equipment/status-summary?minutes=60` | 설비 · 상태별로 머문 초 |
-| `GET /api/v1/equipment/{id}/status-changes?minutes=60` | 설비 하나의 상태 구간(최신 순) |
+| `GET /api/v1/equipment/latest` | 설비별 최신 로그 1건(메모리. 서버를 막 띄워 비었으면 1분 요약의 마지막 값) |
+| `GET /api/v1/equipment/{id}/sensor-logs?minutes=10` | 설비 하나의 최근 로그(시간순). 10분 이하는 메모리의 1초 값, 넘으면 1분마다 평균 1점 |
+| `GET /api/v1/equipment/status-summary?minutes=60` | 설비 · 상태별로 머문 초(1분 요약 + 메모리) |
+| `GET /api/v1/equipment/{id}/status-changes?minutes=60` | 설비 하나의 상태 구간(최신 순, 상태 이력 테이블) |
 | `GET /api/v1/production-performance` | 작업지시 · 설비별 누적 실적 |
 
-조회 API의 `minutes`는 1~1440만 받고, 벗어나거나 숫자가 아니면 400입니다. 설계: [수신 API](docs/plans/backend-sensor-log-api.md) · [조회 API](docs/plans/dashboard-monitoring-api.md) · [작업지시](docs/plans/work-order.md) · [OEE](docs/plans/oee.md) · [품질](docs/plans/quality.md) · [비가동](docs/plans/downtime.md)
+조회 API의 `minutes`는 1~1440만 받고, 벗어나거나 숫자가 아니면 400입니다. 설계: [수신 API](docs/plans/backend-sensor-log-api.md) · [조회 API](docs/plans/dashboard-monitoring-api.md) · [1분 요약](docs/plans/sensor-rollup.md) · [작업지시](docs/plans/work-order.md) · [OEE](docs/plans/oee.md) · [품질](docs/plans/quality.md) · [비가동](docs/plans/downtime.md)
+
+### 센서 저장 구조 개선: 1분 요약 · 원본 아카이브
+
+설비가 수십 ~ 수천 대로 늘어도 버티도록, 1초마다 DB에 1행씩 넣던 센서 원본을 **서버 메모리에서 1분 요약으로 모아 분마다 1행만** 넣고, 1초 원본은 **1시간 단위 Parquet 파일**로 보관하게 바꿨습니다. 먼저 k6로 설비 5 ~ 2,000대를 재현해 문제를 숫자로 남기고(Before), 같은 조건으로 다시 쟀습니다(After).
+
+| 지표 | Before | After |
+|---|---:|---:|
+| 센서 저장량(설비 50대 × 7일) | 4,163MB | **129MB**(1/32) |
+| 1초 원본 1건 보관 | DB 144B | **Parquet 3.2B** |
+| DB WAL(설비 200대) | 57.8KB/초 | **2.1KB/초** |
+| 수신 응답 p99(설비 2,000대) | 715ms | **2.7ms** |
+| OEE 7일 조회 | 2,563ms | **47ms** |
+| OEE 정확도 · `kill -9` 뒤 요약 | — | 원본과 같음 · 손실 0 |
+
+- p99는 응답 시간을 빠른 순서로 늘어놓았을 때 99번째 백분위 값입니다. p99 715ms는 100건 중 1건이 715ms보다 느렸다는 뜻입니다.
+- 측정해 보니 일부 요청이 1초까지 느려진 원인은 DB 쓰기가 아니라, **모든 수신 요청이 하나씩 차례로 지나가야 하는 라인 잠금**이었습니다(연결 10개 중 9개 대기). 센서만 보낸 요청은 작업지시를 바꾸지 않으므로 이 잠금을 건너뛰고 설비별 잠금만 잡게 바꿨습니다.
+- 서버가 죽어도 먼저 디스크에 남긴 스풀 파일로 요약을 다시 만듭니다(Redis · Kafka 없이 서버 한 대 기준).
+
+문제 → 근거(캡처) → 원인 → 선택지 비교 → 해결 → 결과: [docs/experiments/sensor-rollup/](docs/experiments/sensor-rollup/README.md) · 계획: [docs/plans/sensor-rollup.md](docs/plans/sensor-rollup.md)
 
 ### 센서 로그 인덱스 비교 실험
+
+> 1분 요약(위) 전의 원본 테이블 실험입니다. 지금 대시보드 조회는 메모리 · 1분 요약 · 상태 이력을 읽습니다.
 
 센서 로그는 1초에 5행씩 계속 쌓이고, 대시보드는 2초마다 "최근 n분"을 읽습니다. 어떤 인덱스가 맞는지 302만 행(설비 5대 · 50대 두 가지) × 인덱스 5단계 × 쿼리 5개를 `EXPLAIN (ANALYZE, BUFFERS)`로 비교했습니다.
 
@@ -237,13 +262,15 @@ Java 17과 PostgreSQL이 필요합니다. Gradle은 래퍼(`gradlew`)를 쓰므�
 자동 시뮬레이션: 시작(POST /producer/runs) ──> 1초마다 라인 진행 (producer/) ──┬─> POST /sensor-logs/bulk (+ 실행 ID) ──> backend/
                                                                               └─> 3D 화면 (provide/inject)
 
-backend/: SensorLogController ──> ProducerService(실행 ID 확인, 라인 잠금) ──> SensorLogService(metrics · production 분리, 생산 · 불량 이벤트 · 정지 이어 붙이기 · 저장)
+backend/: SensorLogController ──> ProducerService(실행 ID 확인, 실적이 있으면 라인 잠금) ──> SensorLogService(설비별 잠금, metrics · production 분리, 생산 · 불량 이벤트 · 정지 · 상태 이력)
+                                                                         │    └─> SensorArchive(스풀 CSV) · SensorAggregator(메모리 1분 버킷 · 최근 10분)
                                                                          └─> WorkOrderService.advanceLine(완료 판정 → 다음 지시 선택)
+          SensorRollupJobs ──> SensorRollupService: 1초마다 끝난 분 → SensorMinuteMapper(UPSERT) · 10초마다 끝난 시간 스풀 → Parquet · 시작할 때 스풀로 복구
           WorkOrderController ──> WorkOrderService(등록 · 상태 전환, 라인 잠금) ──> WorkOrderMapper
-          OeeController ──> OeeService(구간 · 비율 계산) ──> OeeMapper(초 · 개수 합계 SQL)
+          OeeController ──> OeeService(구간 · 비율 계산) ──> SensorRollupService(상태 초: 요약 + 메모리) · OeeMapper(개수 합계 SQL)
           QualityController ──> QualityService(직행률 · 파레토 계산) ──> QualityMapper(유형 · 작업지시별 합계) · OeeMapper(설비별 개수)
           DowntimeController ──> DowntimeService(파레토 계산 · 사유 입력) ──> DowntimeQueryMapper(겹친 초 합계 · 목록)
-          QueryController ──> QueryService(기간 검사) ──> SensorLogQueryMapper · ProductionQueryMapper ──> 조회 SQL
+          QueryController ──> QueryService(기간 검사) ──> SensorRollupService(최신 · 10분: 메모리, 상태 비율: 요약, 이력: 상태 이력) · ProductionQueryMapper
 
 대시보드: usePolling(2초) ──> api/dashboard.ts · api/workOrders.ts · api/oee.ts · api/quality.ts · api/downtime.ts (axios) ──> 조회 · 작업지시 API
           views/ ──> dashboard/ (계산 함수 · 카드 · 차트)
@@ -251,7 +278,7 @@ backend/: SensorLogController ──> ProducerService(실행 ID 확인, 라인 �
 
 - 대시보드 첫 화면에는 three.js가 들어가지 않습니다. 3D 코드는 자동 시뮬레이션 화면이 열릴 때 따로 불러옵니다.
 - 앞 요청이 끝나지 않았으면 다음 폴링은 건너뛰어, 서버가 느려도 요청이 쌓이지 않습니다.
-- 작업지시 상태를 바꾸는 트랜잭션(하달 · 보류 · 1초 전송의 완료 판정)은 PostgreSQL advisory lock으로 한 번에 하나씩 돌아, 다음 지시 고르기가 겹치지 않습니다.
+- 작업지시 상태를 바꾸는 트랜잭션(하달 · 보류 · 실적이 있는 1초 전송의 완료 판정)은 PostgreSQL advisory lock(라인 잠금)으로 한 번에 하나씩 돌아, 다음 지시 고르기가 겹치지 않습니다. 센서만 온 전송은 지시를 바꾸지 않으므로 설비별 잠금만 잡아 서로 기다리지 않습니다.
 
 ### 폴더 구조
 
@@ -273,8 +300,8 @@ frontend/src/
 backend/src/main/
 ├── java/com/messtudy/backend/
 │   ├── controller/   # 수신(SensorLogController, ProducerController) · 작업지시(WorkOrderController) · OEE · 품질 · 비가동 · 기준정보 · 조회
-│   ├── service/      # 수신: 실행 ID · 분리 · 검증 · 트랜잭션 / 작업지시: 등록 · 상태 전환 · 다음 지시 선택 / OEE · 품질 · 비가동: 비율 계산 · 사유 입력 / 조회: 기간 검사
-│   ├── mapper/       # MyBatis 매퍼: 다중 INSERT, UPSERT, 조건부 상태 전환 UPDATE, 조회 SQL(LATERAL, LAG 윈도 함수)
+│   ├── service/      # 수신: 실행 ID · 분리 · 검증 · 트랜잭션 / 센서: 메모리 1분 요약 · 스풀 · Parquet · 복구 / 작업지시: 등록 · 상태 전환 · 다음 지시 선택 / OEE · 품질 · 비가동: 비율 계산 · 사유 입력 / 조회: 기간 검사
+│   ├── mapper/       # MyBatis 매퍼: 다중 INSERT, UPSERT(1분 요약 합치기 · 덮어쓰기), 조건부 상태 전환 UPDATE, 조회 SQL(LATERAL, date_bin)
 │   └── config/       # CORS(GET · POST · PUT), 400 · 404 · 409 오류 응답
 └── resources/
     ├── application.properties.example  # 복사해서 application.properties로 씀(실제 파일은 커밋 안 함)
@@ -282,6 +309,7 @@ backend/src/main/
     └── mapper/       # 매퍼 SQL(XML)
 
 backend/sql/bench/    # 인덱스 비교 실험 SQL · 실행 스크립트(서버는 실행하지 않음)
+bench/sensor-rollup/  # 1분 요약 Before/After 측정: k6 부하 · pgbench · 3,024만 행 조회 · 정확도 · kill -9 복구 · 캡처 스크립트
 ```
 
 ## 개발 방식

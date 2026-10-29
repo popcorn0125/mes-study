@@ -16,7 +16,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.messtudy.backend.TestDb;
 
-/** 테스트 DB(mes_test)에서 센서 로그 · 실적 · 생산 이벤트 저장과 트랜잭션 롤백을 확인한다. */
+/** 테스트 DB(mes_test)에서 센서 값(메모리 요약 · 상태 이력) · 실적 · 생산 이벤트 저장과 트랜잭션 롤백을 확인한다. */
 @SpringBootTest
 @ActiveProfiles("test")
 class SensorLogServiceDbTest {
@@ -27,15 +27,18 @@ class SensorLogServiceDbTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private SensorAggregator aggregator;
+
     @BeforeEach
     void clean() {
-        TestDb.resetWithWorkOrder(jdbc);
+        TestDb.resetWithWorkOrder(jdbc, aggregator);
     }
 
     private static Map<String, Object> item(String workOrderId, String equipmentId, int totalCount) {
         return Map.of(
                 "equipmentId", equipmentId,
-                "timestamp", "2026-10-24T23:37:12.451Z",
+                "timestamp", "2026-10-24T23:37:1" + totalCount + ".451Z",
                 "status", "RUN",
                 "workOrderId", workOrderId,
                 "metrics", Map.of("temperature", 49.4, "vibration", 2.8),
@@ -46,13 +49,24 @@ class SensorLogServiceDbTest {
         return jdbc.queryForObject("SELECT count(*) FROM " + table, Integer.class);
     }
 
+    /** 아직 DB에 넣지 않은 1분 요약의 설비별 받은 행 수 */
+    private Map<String, Integer> pendingSamples() {
+        Map<String, Integer> samples = new java.util.TreeMap<>();
+        aggregator.pendingRows().forEach(r -> samples.merge((String) r.get("equipmentId"), (Integer) r.get("sampleCount"), Integer::sum));
+        return samples;
+    }
+
     @Test
-    void 매초_요청이_오면_센서_로그는_쌓이고_실적은_한_행이_갱신된다() {
+    void 매초_요청이_오면_센서_값은_메모리_요약에_모이고_원본은_DB에_넣지_않으며_실적은_한_행이_갱신된다() {
         for (int second = 1; second <= 3; second++) {
             service.save(List.of(item("WO-20261024-001", "CNC_01", second), item("WO-20261024-001", "WINDER_01", second)));
         }
+        // 같은 요청이 다시 와도(재전송) 센서 값은 한 번만 센다
+        assertThat(service.save(List.of(item("WO-20261024-001", "CNC_01", 3)))).containsEntry("sensorLogs", 0);
 
-        assertThat(count("equipment_sensor_log")).isEqualTo(6);
+        assertThat(pendingSamples()).containsExactly(Map.entry("CNC_01", 3), Map.entry("WINDER_01", 3));
+        assertThat(count("equipment_sensor_log")).isZero();
+        assertThat(count("equipment_status_change")).isEqualTo(2); // 설비마다 RUN 구간 하나
         assertThat(count("production_performance")).isEqualTo(2);
         assertThat(jdbc.queryForObject(
                 "SELECT total_count FROM production_performance WHERE equipment_id = 'CNC_01'", Integer.class)).isEqualTo(3);
@@ -84,7 +98,7 @@ class SensorLogServiceDbTest {
     }
 
     @Test
-    void 센서_로그에_진행_중이던_작업지시를_남기고_지시가_없으면_null이다() {
+    void 요약에_진행_중이던_작업지시를_남기고_지시가_없으면_빈_문자열이다() {
         Map<String, Object> idle = Map.of(
                 "equipmentId", "WINDER_01",
                 "timestamp", "2026-10-24T23:37:12.451Z",
@@ -93,9 +107,9 @@ class SensorLogServiceDbTest {
 
         service.save(List.of(item(1, 1, 0), idle));
 
-        assertThat(jdbc.queryForList("SELECT equipment_id, work_order_id FROM equipment_sensor_log ORDER BY equipment_id"))
-                .extracting(r -> r.get("equipment_id") + "=" + r.get("work_order_id"))
-                .containsExactly("CNC_01=" + TestDb.WORK_ORDER_ID, "WINDER_01=null");
+        assertThat(aggregator.pendingRows())
+                .extracting(r -> r.get("equipmentId") + "=" + r.get("workOrderId"))
+                .containsExactlyInAnyOrder("CNC_01=" + TestDb.WORK_ORDER_ID, "WINDER_01=");
     }
 
     private static Map<String, Object> withDefects(String equipmentId, int bad, Map<String, Object> defects) {
@@ -130,18 +144,21 @@ class SensorLogServiceDbTest {
         assertThatThrownBy(() -> service.save(List.of(withDefects("CNC_01", 1, Map.of("NO_SUCH_DEFECT", 1)))))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
-        assertThat(count("equipment_sensor_log")).isZero();
+        assertThat(aggregator.pendingRows()).isEmpty();
+        assertThat(count("equipment_status_change")).isZero();
         assertThat(count("production_performance")).isZero();
         assertThat(count("defect_event")).isZero();
     }
 
     @Test
-    void 실적_저장이_실패하면_센서_로그도_저장되지_않는다() {
-        // 센서 로그는 설비 외래 키가 없어 들어가고, 뒤의 생산 이벤트 · 실적 저장이 없는 설비라 실패한다
+    void 실적_저장이_실패하면_센서_값도_메모리_상태_이력에_남지_않는다() {
+        // 생산 이벤트 · 실적 저장이 없는 설비라 실패한다. 메모리 · 스풀은 DB 쓰기가 끝난 뒤에 넣으므로 그대로다
         assertThatThrownBy(() -> service.save(List.of(item(TestDb.WORK_ORDER_ID, "NO_SUCH_EQUIPMENT", 1))))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
-        assertThat(count("equipment_sensor_log")).isZero();
+        assertThat(aggregator.pendingRows()).isEmpty();
+        assertThat(aggregator.tracker("NO_SUCH_EQUIPMENT")).isNull();
+        assertThat(count("equipment_status_change")).isZero();
         assertThat(count("production_performance")).isZero();
         assertThat(count("production_event")).isZero();
     }

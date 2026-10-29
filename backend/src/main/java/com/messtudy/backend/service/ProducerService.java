@@ -14,7 +14,8 @@ import com.messtudy.backend.mapper.WorkOrderMapper;
 /**
  * 시뮬레이터(데이터 발생기)와 주고받는 일.
  * - 시작: 새 실행 ID를 활성으로 만들고(이전 탭은 밀려난다) 진행 중 지시와 저장된 수량을 돌려준다.
- * - 1초 전송: 활성 실행만 받는다. 저장 뒤 완료 판정 · 다음 지시 선택을 하고, 지금 진행 중인 지시를 알려 준다.
+ * - 1초 전송: 활성 실행만 받는다. 실적이 있으면 라인 잠금 안에서 저장 뒤 완료 판정 · 다음 지시 선택을 하고, 지금 진행 중인 지시를 알려 준다.
+ *   센서만 온 요청(실적 없음)은 작업지시를 바꾸지 않으므로 라인 잠금 없이 설비별 잠금만 잡는다(docs/plans/sensor-rollup.md 14장).
  */
 @Service
 public class ProducerService {
@@ -54,12 +55,23 @@ public class ProducerService {
         if (runId == null || !runId.equals(producerRunMapper.findActiveRunId())) {
             throw new StateConflictException("다른 시뮬레이터가 실행 중입니다. 이 시뮬레이터를 쓰려면 다시 시작하세요");
         }
-        workOrderMapper.lockLine();
+        boolean lineWork = hasProduction(payload);
+        if (lineWork) {
+            workOrderMapper.lockLine();
+        }
         Map<String, Object> result = new HashMap<>(sensorLogService.save(payload));
-        workOrderService.advanceLine();
+        if (lineWork) {
+            workOrderService.advanceLine();
+        }
         Map<String, Object> current = workOrderMapper.findCurrent();
         result.put("workOrder", current == null ? null
                 : Map.of("workOrderId", current.get("workOrderId"), "plannedQty", current.get("plannedQty")));
         return result;
+    }
+
+    /** 실적(workOrderId · production)이 하나라도 있으면 라인 작업이다. 형식 검사는 SensorLogService가 한다 */
+    static boolean hasProduction(List<Map<String, Object>> payload) {
+        return payload != null && payload.stream()
+                .anyMatch(item -> item != null && (item.get("workOrderId") != null || item.get("production") != null));
     }
 }

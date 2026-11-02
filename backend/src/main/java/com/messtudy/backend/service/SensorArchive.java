@@ -67,9 +67,11 @@ public class SensorArchive {
             return;
         }
         try {
+            // 스풀 경로는 시간마다 한 번만 정한다(spoolFor는 Parquet 파일이 있는지 디스크를 본다)
+            Map<LocalDateTime, Path> paths = new HashMap<>();
             Map<Path, BufferedWriter> used = new LinkedHashMap<>();
             for (SensorReading r : readings) {
-                Path path = spoolFor(hourOf(r.recordedAt()));
+                Path path = paths.computeIfAbsent(hourOf(r.recordedAt()), this::spoolFor);
                 BufferedWriter writer = used.computeIfAbsent(path, this::writer);
                 writer.write(line(r));
                 writer.newLine();

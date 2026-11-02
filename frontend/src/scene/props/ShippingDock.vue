@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Vec3 } from '../layout'
+import BoxInstances from './BoxInstances.vue'
 
 /**
  * 출하장 팔레트. 양품이 완료될 때마다 상자가 하나씩 쌓이고(3×3×3), 한 팔레트가 차면 새 팔레트로 넘어간다.
@@ -42,16 +43,13 @@ const cartons = computed(() => {
         :roughness="0.9"
       />
     </TresMesh>
-    <TresMesh
-      v-for="(p, i) in cartons"
-      :key="i"
-      :position="p"
-    >
-      <TresBoxGeometry :args="[CARTON, CARTON, CARTON]" />
-      <TresMeshStandardMaterial
-        color="#b08850"
-        :roughness="0.9"
-      />
-    </TresMesh>
+    <!-- 상자는 1개씩 늘었다 줄었다 하므로, 메시를 만들고 지우지 않고 한 팔레트분 칸에서 그릴 개수만 바꾼다 -->
+    <BoxInstances
+      :size="[CARTON, CARTON, CARTON]"
+      :positions="cartons"
+      :capacity="PER_PALLET"
+      color="#b08850"
+      :roughness="0.9"
+    />
   </TresGroup>
 </template>

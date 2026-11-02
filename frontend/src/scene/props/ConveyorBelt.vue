@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount } from 'vue'
 import { useLoop } from '@tresjs/core'
 import { CanvasTexture, RepeatWrapping, SRGBColorSpace } from 'three'
-import { CONVEYOR_TOP_Y } from '../layout'
+import { CONVEYOR_TOP_Y, type Vec3 } from '../layout'
+import BoxInstances from './BoxInstances.vue'
 
 /** 벨트 컨베이어 한 구간(x: from → to, z = 0). 벨트 무늬가 계속 흐른다. */
 const props = defineProps<{ from: number; to: number }>()
@@ -20,6 +21,9 @@ const legXs = computed(() => {
   const inset = 0.12
   return Array.from({ length: count }, (_, i) => props.from + inset + ((length.value - 2 * inset) * i) / (count - 1))
 })
+const LEG_HEIGHT = CONVEYOR_TOP_Y - 0.04
+/** 다리는 x마다 벨트 양쪽에 하나씩(InstancedMesh 하나로 그린다) */
+const legs = computed(() => legXs.value.flatMap((x): Vec3[] => [-1, 1].map((side) => [x, LEG_HEIGHT / 2, (side * WIDTH) / 2])))
 
 // 어두운 벨트에 옅은 가로줄: 흐르는 방향이 보이도록 한다
 const canvas = document.createElement('canvas')
@@ -68,18 +72,9 @@ const beltY = CONVEYOR_TOP_Y - 0.02
       />
     </TresMesh>
   </TresGroup>
-  <TresGroup
-    v-for="x in legXs"
-    :key="x"
-    :position="[x, 0, 0]"
-  >
-    <TresMesh
-      v-for="side in [-1, 1]"
-      :key="side"
-      :position="[0, (CONVEYOR_TOP_Y - 0.04) / 2, (side * WIDTH) / 2]"
-    >
-      <TresBoxGeometry :args="[0.04, CONVEYOR_TOP_Y - 0.04, 0.04]" />
-      <TresMeshStandardMaterial color="#484f58" />
-    </TresMesh>
-  </TresGroup>
+  <BoxInstances
+    :size="[0.04, LEG_HEIGHT, 0.04]"
+    :positions="legs"
+    color="#484f58"
+  />
 </template>

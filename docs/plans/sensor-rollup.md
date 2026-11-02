@@ -179,7 +179,7 @@ erDiagram
 | 위치 | `backend/data/archive/sensor-log/date=YYYY-MM-DD/hour=HH.parquet` (설정으로 바꿀 수 있고 gitignore) |
 | 열 | equipment_id, recorded_at, status, work_order_id, temperature, vibration, alarm_code |
 | 압축 | zstd |
-| 만드는 방법 | 받는 동안 `spool/YYYY-MM-DDTHH.csv`에 한 줄씩 이어 쓰고(순차 쓰기라 싸다), 1시간이 끝나고 5초 뒤 DuckDB로 `COPY (SELECT * FROM read_csv(...)) TO '...parquet' (FORMAT parquet, COMPRESSION zstd)` 한 뒤 스풀을 지운다 |
+| 만드는 방법 | 받는 동안 `spool/sensor-YYYY-MM-DDTHH.csv`에 한 줄씩 이어 쓰고(순차 쓰기라 싸다), 1시간이 끝나고 2분 뒤(늦게 오는 행을 기다림) DuckDB로 `COPY (SELECT * FROM read_csv(...)) TO '...parquet' (FORMAT parquet, COMPRESSION zstd)` 한 뒤 스풀을 지운다 |
 | 서버가 죽으면 | 스풀 파일이 남아 있어서 다음 시작 때 Parquet으로 바꾼다 |
 | 라이브러리 | `org.duckdb:duckdb_jdbc` 하나. `parquet-java`는 Hadoop 의존성이 딸려 와서 쓰지 않는다. DuckDB는 나중에 파일을 SQL로 조회할 때도 쓴다 |
 
@@ -291,7 +291,7 @@ flowchart TD
 | 대상 | 내용 |
 |---|---|
 | `SensorAggregator` (DB 없음) | 평균 · 최대 · 최소, 상태별 초, 분 경계, 작업지시가 바뀌면 버킷 나눔, 재전송 버림, 닫힌 버킷만 꺼냄 |
-| 요약 UPSERT (DB) | 늦게 온 행을 가중 평균으로 합침, 최대 · 최소 · 초 합 |
+| 요약 UPSERT (DB) | 늦게 온 행을 합 · 개수로 합침(평균은 `GENERATED` 열), 최대 · 최소 · 초 합 |
 | 정확도 (DB) | 같은 로그를 raw · rollup 두 방식으로 넣고 OEE 가동률 · 상태 비율이 같은가 |
 | 상태 변경 | 바뀔 때만 1행 · 이전 행 `ended_at` 채움, 5초 끊기면 구간을 끊음, 이력 API 응답 모양이 그대로인가 |
 | 복구 | 몇 분 받고 메모리를 버린 뒤(죽은 것처럼) 스풀로 복구하면, 끝까지 정상으로 받은 경우와 요약이 같은가. 두 번 복구해도 같은가 |

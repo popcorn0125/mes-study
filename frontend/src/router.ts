@@ -2,13 +2,6 @@ import { watch } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { loginGuard } from './auth/guard'
 import { currentUser } from './auth/session'
-import EquipmentView from './views/EquipmentView.vue'
-import LoginView from './views/LoginView.vue'
-import MaterialView from './views/MaterialView.vue'
-import ProductionView from './views/ProductionView.vue'
-import QualityView from './views/QualityView.vue'
-import ReportView from './views/ReportView.vue'
-import WorkOrderView from './views/WorkOrderView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -28,54 +21,54 @@ declare module 'vue-router' {
 /**
  * 페이지는 MES 기능 단위로 나눈다(docs/dashboard-plan.md).
  * 아직 보여 줄 데이터가 없는 메뉴(자재 · 리포트)는 hidden으로 사이드바에서 숨긴다.
+ * 화면은 모두 들어갈 때 불러온다(차트 · 3D 장면이 첫 화면 번들에 섞이지 않게).
  */
 export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'production',
-    component: ProductionView,
+    component: () => import('./views/ProductionView.vue'),
     meta: { title: '생산 현황', icon: '📊' },
   },
   {
     path: '/work-orders',
     name: 'work-orders',
-    component: WorkOrderView,
+    component: () => import('./views/WorkOrderView.vue'),
     meta: { title: '작업지시 관리', icon: '📋' },
   },
   {
     path: '/equipment',
     name: 'equipment',
-    component: EquipmentView,
+    component: () => import('./views/EquipmentView.vue'),
     meta: { title: '설비 관리', icon: '⚙️' },
   },
   {
     path: '/quality',
     name: 'quality',
-    component: QualityView,
+    component: () => import('./views/QualityView.vue'),
     meta: { title: '품질 관리', icon: '✅' },
   },
   {
     path: '/materials',
     name: 'materials',
-    component: MaterialView,
+    component: () => import('./views/MaterialView.vue'),
     meta: { title: '자재 / 재고', icon: '📦', hidden: true },
   },
   {
     path: '/reports',
     name: 'reports',
-    component: ReportView,
+    component: () => import('./views/ReportView.vue'),
     meta: { title: '실적 리포트', icon: '📈', hidden: true },
   },
   {
     path: '/login',
     name: 'login',
-    component: LoginView,
+    component: () => import('./views/LoginView.vue'),
     meta: { title: '로그인', icon: '🔐', fullscreen: true, public: true },
   },
   {
     path: '/simulator',
     name: 'simulator',
-    // 3D 장면(three.js)이 커서 자동 시뮬레이션 화면에 들어올 때만 불러온다
     component: () => import('./views/SimulatorView.vue'),
     // 사람이 보는 화면이 아니라 설비 역할의 데이터 발생기라 로그인 없이 연다
     meta: { title: '자동 시뮬레이션', icon: '🏭', fullscreen: true, public: true },

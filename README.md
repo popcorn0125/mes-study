@@ -220,6 +220,8 @@ Java 17과 PostgreSQL이 필요합니다. Gradle은 래퍼(`gradlew`)를 쓰므�
 | `GET /api/v1/equipment/{id}/status-changes?minutes=60` | 설비 하나의 상태 구간(최신 순, 상태 이력 테이블) |
 | `GET /api/v1/production-performance` | 작업지시 · 설비별 누적 실적 |
 
+요청 · 응답 예시와 필드 설명, 오류 코드는 [API 문서](docs/api.md)에 있습니다.
+
 조회 API의 `minutes`는 1~1440만 받고, 벗어나거나 숫자가 아니면 400입니다. 설계: [수신 API](docs/plans/backend-sensor-log-api.md) · [조회 API](docs/plans/dashboard-monitoring-api.md) · [1분 요약](docs/plans/sensor-rollup.md) · [작업지시](docs/plans/work-order.md) · [OEE](docs/plans/oee.md) · [품질](docs/plans/quality.md) · [비가동](docs/plans/downtime.md)
 
 ### 센서 저장 구조 개선: 1분 요약 · 원본 아카이브

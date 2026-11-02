@@ -1,17 +1,5 @@
-/** 작업장별 설비 3D 모델 종류. 같은 작업장에 설비를 추가하면 같은 모델로 그린다. */
+/** 설비 3D 모델 종류(producer/equipment.ts의 설비마다 하나) */
 export type MachineKind = 'cnc' | 'winder' | 'robot' | 'inspection' | 'packer' | 'generic'
-
-const KIND_BY_WORK_CENTER: Record<string, MachineKind> = {
-  MACHINING: 'cnc',
-  WINDING: 'winder',
-  ASSEMBLY: 'robot',
-  INSPECTION: 'inspection',
-  PACKING: 'packer',
-}
-
-export function machineKind(workCenterId: string): MachineKind {
-  return KIND_BY_WORK_CENTER[workCenterId] ?? 'generic'
-}
 
 /** 설비 곁 사람의 역할: 작업자 / 검사원 / 정비사(고장·정비 중에만 등장) */
 export type WorkerRole = 'operator' | 'inspector' | 'technician'

@@ -4,6 +4,7 @@ import { fetchWorkOrder, postSensorLogs, startProducerRun, type BulkResult, type
 import { PRODUCER_EQUIPMENT } from './equipment'
 import { initialState, toLog, type SensorLog } from './generate'
 import { stepLine, type LineWorkOrder } from './line'
+import { createSerialSender } from './serialSend'
 
 export const SEND_INTERVAL_MS = 1000
 /** 서버가 꺼져 있어 시작하지 못했을 때 다시 시도하는 간격 */
@@ -29,6 +30,7 @@ export interface SensorProducer {
  * 더미 센서 데이터 발생기.
  * - 시작할 때 서버에서 실행 ID와 진행 중 작업지시 · 설비별 저장 수량(유형별 불량 포함)을 받아 그 수량부터 이어 센다.
  * - 1초마다 라인을 한 걸음 진행해 로그를 보낸다. 응답에 담긴 진행 중 지시가 바뀌면 그 지시의 저장 수량을 받아 갈아탄다.
+ *   전송은 한 번에 하나만 한다. 앞 요청이 늦으면 그동안의 초를 모아 다음에 한 번에 보낸다(순서가 뒤바뀌면 서버가 앞선 초를 버린다).
  * - 409(다른 탭이 넘겨받음)를 받으면 전송을 멈춘다. 그 밖의 전송 오류는 무시한다(서버가 꺼져도 화면은 계속 돈다).
  */
 export function useSensorProducer(): SensorProducer {
@@ -58,8 +60,25 @@ export function useSensorProducer(): SensorProducer {
     workOrder.value = detail ? { workOrderId: detail.workOrderId, plannedQty: detail.plannedQty } : null
   }
 
+  /** 모아 둔 로그를 한 요청으로 보내고, 응답의 진행 중 지시를 따른다 */
+  const sender = createSerialSender<SensorLog>(async (batch) => {
+    if (phase.value !== 'running' || !runId) return
+    const sentAt = generation
+    try {
+      const result = await postSensorLogs(runId, batch)
+      if (sentAt === generation) void follow(result.workOrder)
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        phase.value = 'displaced'
+        workOrder.value = null
+        sender.clear()
+      }
+    }
+  })
+
   async function start() {
     clearTimeout(retry)
+    sender.clear()
     phase.value = 'connecting'
     workOrder.value = null
     try {
@@ -92,17 +111,7 @@ export function useSensorProducer(): SensorProducer {
     const now = new Date()
     logs.value = states.map((state) => toLog(state, workOrder.value?.workOrderId, now))
     if (phase.value !== 'running' || !runId) return
-    const sentAt = generation
-    postSensorLogs(runId, logs.value)
-      .then((result) => {
-        if (sentAt === generation) void follow(result.workOrder)
-      })
-      .catch((error: unknown) => {
-        if (axios.isAxiosError(error) && error.response?.status === 409) {
-          phase.value = 'displaced'
-          workOrder.value = null
-        }
-      })
+    sender.push(logs.value)
   }
 
   onMounted(() => {

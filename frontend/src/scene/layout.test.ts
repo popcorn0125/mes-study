@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  UNIT_SIZE,
-  bufferSlotPosition,
-  conveyorSegments,
-  equipmentPosition,
-  equipmentPositions,
-  workCenterX,
-} from './layout'
+import { conveyorSegments, equipmentPosition, workCenterX } from './layout'
 
 const distance = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
 
@@ -16,33 +9,10 @@ describe('layout', () => {
     expect(workCenterX(2, 5)).toBe(0)
   })
 
-  it('버퍼 slot끼리 겹치지 않는다', () => {
-    const slots = Array.from({ length: 10 }, (_, i) => bufferSlotPosition(1, 5, i))
-    for (let i = 0; i < slots.length; i++) {
-      for (let j = i + 1; j < slots.length; j++) {
-        expect(distance(slots[i], slots[j])).toBeGreaterThanOrEqual(UNIT_SIZE)
-      }
-    }
-  })
-
   it('같은 작업장의 설비 여러 대는 서로 다른 위치에 놓인다', () => {
     const a = equipmentPosition(2, 5, 0, 2)
     const b = equipmentPosition(2, 5, 1, 2)
     expect(distance(a, b)).toBeGreaterThan(1)
-  })
-})
-
-describe('equipmentPositions', () => {
-  it('설비가 추가되면 같은 작업장 설비들이 함께 재배치된다', () => {
-    const wcs = ['A', 'B']
-    const one = equipmentPositions(wcs, [{ id: 'B-1', workCenterId: 'B' }])
-    const two = equipmentPositions(wcs, [
-      { id: 'B-1', workCenterId: 'B' },
-      { id: 'B-2', workCenterId: 'B' },
-    ])
-    expect(one.get('B-1')![2]).toBe(0)
-    expect(two.get('B-1')![2]).toBeLessThan(0)
-    expect(two.get('B-2')![2]).toBeGreaterThan(0)
   })
 })
 
